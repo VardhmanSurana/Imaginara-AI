@@ -1,0 +1,5 @@
+{
+  "name": "Imaginara: AI Image Editor",
+  "description": "An AI-powered image editing tool that allows you to upload an image, draw a mask over an area, and describe your desired changes with a text prompt. The app uses the Gemini API to generate the edited image directly in your browser.",
+  "requestFramePermissions": []
+}
