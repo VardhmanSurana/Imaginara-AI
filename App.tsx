@@ -1,52 +1,73 @@
-import React, { useState, useEffect } from 'react';
-import ImageEditor from './components/ImageEditor';
-import { MoonIcon, SunIcon } from './components/Icon';
+import React, { useState } from 'react';
+import LandingPage from './components/LandingPage';
+import EditorPage from './components/EditorPage';
+import { generateImageFromText } from './services/geminiService';
 
 const App: React.FC = () => {
-    const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-        if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-            return 'dark';
+    const [view, setView] = useState<'landing' | 'editor'>('landing');
+    const [initialImageDataUrl, setInitialImageDataUrl] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState<boolean>(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const handleStartWithUpload = (file: File) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            setInitialImageDataUrl(e.target?.result as string);
+            setView('editor');
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const handleStartWithCreate = async (prompt: string) => {
+        setIsLoading(true);
+        setError(null);
+        try {
+            const resultB64 = await generateImageFromText(prompt);
+            const newImageSrc = `data:image/png;base64,${resultB64}`;
+            setInitialImageDataUrl(newImageSrc);
+            setView('editor');
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'An unknown error occurred.');
+        } finally {
+            setIsLoading(false);
         }
-        return 'light';
-    });
-
-    useEffect(() => {
-        const root = window.document.documentElement;
-        root.classList.remove(theme === 'dark' ? 'light' : 'dark');
-        root.classList.add(theme);
-    }, [theme]);
-
-    const toggleTheme = () => {
-        setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
+    };
+    
+    const handleGoHome = () => {
+        setInitialImageDataUrl(null);
+        setError(null);
+        setView('landing');
     };
 
     return (
-        <div className="bg-gray-100 dark:bg-dark-bg min-h-screen text-gray-800 dark:text-dark-text font-sans transition-colors duration-300">
-            <header className="py-6 px-4 sm:px-8 border-b border-gray-200 dark:border-dark-border">
-                <div className="max-w-7xl mx-auto flex justify-between items-center">
-                    <div>
-                        <h1 className="text-3xl font-bold text-sky-600 dark:text-sky-400">Imaginara</h1>
-                        <p className="mt-2 text-gray-500 dark:text-dark-text-secondary">
-                            Upload an image, draw a mask, and tell the AI what to create.
+        <div className="min-h-screen text-text-primary font-sans transition-colors duration-300 flex flex-col">
+            <header className="sticky top-0 z-30 navbar-glass">
+                 <div className="max-w-screen-2xl mx-auto flex justify-between items-center py-4 px-4 sm:px-8">
+                    <div className="flex items-center gap-4">
+                         <h1 className="text-3xl font-bold text-brand">Imaginara</h1>
+                         <p className="mt-1 text-text-secondary hidden sm:block">
+                            AI-Powered Image Creation & Editing
                         </p>
                     </div>
-                    <button 
-                        onClick={toggleTheme} 
-                        className="p-2 rounded-full text-gray-500 dark:text-dark-text-secondary hover:bg-gray-200 dark:hover:bg-dark-surface transition-colors"
-                        aria-label="Toggle theme"
-                    >
-                        {theme === 'light' ? <MoonIcon className="h-6 w-6" /> : <SunIcon className="h-6 w-6" />}
-                    </button>
                 </div>
             </header>
-            <main className="p-4 sm:p-8">
-                <div className="max-w-7xl mx-auto">
-                    <ImageEditor />
-                </div>
+            
+            <main className="flex-grow">
+                {view === 'landing' ? (
+                    <LandingPage onStartWithCreate={handleStartWithCreate} onStartWithUpload={handleStartWithUpload} isLoading={isLoading} />
+                ) : (
+                    <EditorPage initialImageDataUrl={initialImageDataUrl} onGoHome={handleGoHome} />
+                )}
             </main>
-            <footer className="text-center py-4 mt-8 border-t border-gray-200 dark:border-dark-border text-gray-500 dark:text-dark-text-secondary text-sm">
-                <p>Powered by Google Gemini. Created for demonstration purposes.</p>
-            </footer>
+
+            {error && view === 'landing' && (
+                <div className="fixed bottom-4 right-4 max-w-sm w-full p-4 bg-error-bg border border-error-border text-error-text rounded-md text-sm shadow-lg z-50">
+                    <div className="flex justify-between items-start">
+                        <span>{error}</span>
+                        <button onClick={() => setError(null)} className="ml-2 font-bold">&times;</button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

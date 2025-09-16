@@ -32,16 +32,16 @@ const StylePresets: React.FC<StylePresetsProps> = ({ onSelect }) => {
 
     return (
         <div>
-            <h4 className="text-sm font-medium text-gray-600 dark:text-dark-text mb-2">Style Presets</h4>
+            <h4 className="text-sm font-medium text-text-tertiary mb-2">Style Presets</h4>
             <div className="flex flex-wrap gap-2">
                 {presets.map(preset => (
                     <button
                         key={preset.name}
                         onClick={() => handlePresetClick(preset)}
-                        className={`text-xs font-medium py-1 px-3 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-dark-surface focus:ring-sky-500 ${
+                        className={`text-xs font-medium py-1 px-3 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-surface focus:ring-brand ${
                             activePreset === preset.name
-                                ? 'bg-sky-600 text-white'
-                                : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-dark-text'
+                                ? 'bg-brand text-brand-text'
+                                : 'bg-surface-muted hover:bg-surface-muted-hover text-text-tertiary'
                         }`}
                         title={preset.keywords}
                     >

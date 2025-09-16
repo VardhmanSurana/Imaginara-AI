@@ -113,8 +113,6 @@ export const analyzeImageForSuggestions = async (imageB64: string): Promise<stri
         }
     } catch (error) {
         console.error("Error analyzing image for suggestions:", error);
-        // This is a non-critical feature, so we return an empty array on failure
-        // to avoid breaking the user experience.
         return [];
     }
 };
@@ -138,85 +136,18 @@ export const improvePrompt = async (currentPrompt: string): Promise<string> => {
     }
 };
 
-
 const describeImageSystemInstruction = `Act as an expert image analysis API. Your task is to analyze the user-provided image and generate a single, comprehensive JSON object that describes it in minute detail. The JSON should be organized into logical sections to describe composition, visual style, technical details, and narrative elements. Adhere strictly to the provided JSON schema.`;
 
 const imageDescriptionSchema = {
-    type: Type.OBJECT,
-    properties: {
-        general_description: { type: Type.STRING },
-        composition: {
-            type: Type.OBJECT,
-            properties: {
-                subjects: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            name: { type: Type.STRING },
-                            description: { type: Type.STRING },
-                            keywords: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        },
-                        required: ["name", "description", "keywords"]
-                    }
-                },
-                scene: {
-                    type: Type.OBJECT,
-                    properties: {
-                        setting: { type: Type.STRING },
-                        time_of_day: { type: Type.STRING },
-                        weather_or_atmosphere: { type: Type.STRING },
-                    },
-                    required: ["setting", "time_of_day", "weather_or_atmosphere"]
-                }
-            },
-            required: ["subjects", "scene"]
-        },
-        visual_style: {
-            type: Type.OBJECT,
-            properties: {
-                art_style: { type: Type.STRING },
-                lighting: { type: Type.STRING },
-                color_palette: { type: Type.STRING },
-                mood_or_emotion: { type: Type.STRING },
-            },
-            required: ["art_style", "lighting", "color_palette", "mood_or_emotion"]
-        },
-        technical_details: {
-            type: Type.OBJECT,
-            properties: {
-                camera_angle: { type: Type.STRING },
-                focus: { type: Type.STRING },
-                textures_and_details: { type: Type.ARRAY, items: { type: Type.STRING } },
-            },
-            required: ["camera_angle", "focus", "textures_and_details"]
-        },
-        narrative_elements: {
-            type: Type.OBJECT,
-            properties: {
-                story: { type: Type.STRING },
-                symbolism: { type: Type.STRING },
-            },
-            required: ["story", "symbolism"]
-        }
-    },
-    required: ["general_description", "composition", "visual_style", "technical_details", "narrative_elements"]
+    type: Type.OBJECT, properties: { general_description: { type: Type.STRING }, composition: { type: Type.OBJECT, properties: { subjects: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, description: { type: Type.STRING }, keywords: { type: Type.ARRAY, items: { type: Type.STRING } }, }, required: ["name", "description", "keywords"] } }, scene: { type: Type.OBJECT, properties: { setting: { type: Type.STRING }, time_of_day: { type: Type.STRING }, weather_or_atmosphere: { type: Type.STRING }, }, required: ["setting", "time_of_day", "weather_or_atmosphere"] } }, required: ["subjects", "scene"] }, visual_style: { type: Type.OBJECT, properties: { art_style: { type: Type.STRING }, lighting: { type: Type.STRING }, color_palette: { type: Type.STRING }, mood_or_emotion: { type: Type.STRING }, }, required: ["art_style", "lighting", "color_palette", "mood_or_emotion"] }, technical_details: { type: Type.OBJECT, properties: { camera_angle: { type: Type.STRING }, focus: { type: Type.STRING }, textures_and_details: { type: Type.ARRAY, items: { type: Type.STRING } }, }, required: ["camera_angle", "focus", "textures_and_details"] }, narrative_elements: { type: Type.OBJECT, properties: { story: { type: Type.STRING }, symbolism: { type: Type.STRING }, }, required: ["story", "symbolism"] } }, required: ["general_description", "composition", "visual_style", "technical_details", "narrative_elements"]
 };
 
 export const describeImage = async (imageB64: string): Promise<string> => {
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: {
-                parts: [
-                    { inlineData: { data: imageB64, mimeType: 'image/png' } },
-                ]
-            },
-            config: {
-                systemInstruction: describeImageSystemInstruction,
-                responseMimeType: 'application/json',
-                responseSchema: imageDescriptionSchema as any,
-            }
+            contents: { parts: [ { inlineData: { data: imageB64, mimeType: 'image/png' } }, ] },
+            config: { systemInstruction: describeImageSystemInstruction, responseMimeType: 'application/json', responseSchema: imageDescriptionSchema as any, }
         });
         return response.text;
     } catch (error) {
@@ -228,29 +159,12 @@ export const describeImage = async (imageB64: string): Promise<string> => {
 export const generateImageFromJsonPrompt = async (prompt: string): Promise<string> => {
     try {
         const fullPrompt = `Generate an image based on the following detailed JSON description. Focus on capturing the composition, style, and mood described.\n\n${prompt}`;
-
-        const response = await ai.models.generateImages({
-            model: 'imagen-4.0-generate-001',
-            prompt: fullPrompt,
-            config: {
-              numberOfImages: 1,
-              outputMimeType: 'image/png',
-            },
-        });
-
-        const image = response.generatedImages?.[0]?.image?.imageBytes;
-        if (image) {
-            return image;
-        } else {
-            console.error("API did not return an image for recreation.", response);
-            throw new Error(`API failed to return an image for recreation.`);
-        }
+        return generateImageFromText(fullPrompt);
     } catch (error) {
         console.error("Error generating image from JSON:", error);
         throw new Error("Failed to generate new image from description. Please check the console for details.");
     }
 };
-
 
 export const generateMask = async (imageB64: string, subject_prompt: string): Promise<string> => {
     try {
@@ -258,15 +172,8 @@ export const generateMask = async (imageB64: string, subject_prompt: string): Pr
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image-preview',
-            contents: {
-                parts: [
-                    { inlineData: { data: imageB64, mimeType: 'image/png' } },
-                    { text: fullPrompt },
-                ],
-            },
-            config: {
-                responseModalities: [Modality.IMAGE],
-            },
+            contents: { parts: [ { inlineData: { data: imageB64, mimeType: 'image/png' } }, { text: fullPrompt }, ], },
+            config: { responseModalities: [Modality.IMAGE], },
         });
 
         const imagePart = response.candidates?.[0]?.content?.parts.find(part => part.inlineData);
@@ -279,5 +186,59 @@ export const generateMask = async (imageB64: string, subject_prompt: string): Pr
     } catch (error) {
         console.error("Error generating mask from AI:", error);
         throw new Error("Failed to generate mask from AI. Check console for details.");
+    }
+};
+
+export const generateImageFromText = async (prompt: string): Promise<string> => {
+    try {
+        const response = await ai.models.generateImages({
+            model: 'imagen-4.0-generate-001',
+            prompt: prompt,
+            config: {
+              numberOfImages: 1,
+              outputMimeType: 'image/png',
+            },
+        });
+        const image = response.generatedImages?.[0]?.image?.imageBytes;
+        if (image) {
+            return image;
+        } else {
+            console.error("API did not return an image for text-to-image.", response);
+            throw new Error(`API failed to return an image for text-to-image.`);
+        }
+    } catch(error) {
+        console.error("Error generating image from text:", error);
+        throw new Error("Failed to generate new image from text. Check console for details.");
+    }
+};
+
+export const applyStyleTransfer = async (contentImageB64: string, styleImageB64: string): Promise<string> => {
+    try {
+        const prompt = "Transfer the artistic style from the second image (style image) onto the content and composition of the first image (content image).";
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image-preview',
+            contents: {
+                parts: [
+                    { inlineData: { data: contentImageB64, mimeType: 'image/png' } },
+                    { inlineData: { data: styleImageB64, mimeType: 'image/png' } },
+                    { text: prompt },
+                ],
+            },
+            config: {
+                responseModalities: [Modality.IMAGE, Modality.TEXT],
+            },
+        });
+
+        const imagePart = response.candidates?.[0]?.content?.parts.find(part => part.inlineData);
+        if (imagePart && imagePart.inlineData) {
+            return imagePart.inlineData.data;
+        } else {
+            const textResponse = response.text;
+            console.error("API did not return an image for style transfer. Response text:", textResponse);
+            throw new Error(`API failed to return an image for style transfer. It said: "${textResponse || 'No reason provided.'}"`);
+        }
+    } catch (error) {
+        console.error("Error calling Gemini API for style transfer:", error);
+        throw new Error("Failed to apply style transfer. Please check the console for more details.");
     }
 };

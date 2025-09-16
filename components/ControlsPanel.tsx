@@ -1,11 +1,23 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { UploadIcon, SparklesIcon, EraserIcon, LightBulbIcon } from './Icon';
+import { UploadIcon, SparklesIcon, EraserIcon, LightBulbIcon, WandIcon, RefreshIcon, HomeIcon, BrushIcon, CodeIcon, DownloadIcon, EnhanceIcon, RedoIcon, RemoveObjectIcon, ReplaceBackgroundIcon, UndoIcon, VaryIcon, StyleTransferIcon, SaveSnapshotIcon, ViewSnapshotsIcon, ResizeIcon } from './Icon';
 import Spinner from './Spinner';
 import StylePresets from './StylePresets';
-import { EditorMode } from './Toolbar';
+import { EditorMode, Tool } from './EditorPage';
+import AiFilters from './AiFilters';
+
+export const modeConfig: Record<EditorMode, { name: string; icon: React.FC<any>; hasPrompt: boolean; hasMasking: boolean; }> = {
+    edit: { name: "Edit", icon: BrushIcon, hasPrompt: true, hasMasking: true },
+    remove: { name: "Remove", icon: RemoveObjectIcon, hasPrompt: false, hasMasking: true },
+    replace_bg: { name: "Replace BG", icon: ReplaceBackgroundIcon, hasPrompt: true, hasMasking: true },
+    enhance: { name: "Enhance", icon: EnhanceIcon, hasPrompt: false, hasMasking: false },
+    style_transfer: { name: "Style Transfer", icon: StyleTransferIcon, hasPrompt: false, hasMasking: false },
+};
 
 interface ControlsPanelProps {
+    onGoHome: () => void;
     onImageUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
+    onStyleImageUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
+    styleImageName: string | null;
     promptText: string;
     onPromptChange: (text: string) => void;
     onImprovePrompt: () => void;
@@ -22,8 +34,33 @@ interface ControlsPanelProps {
     error: string | null;
     isImageLoaded: boolean;
     editorMode: EditorMode;
-    modeHasPrompt: boolean;
-    modeHasMasking: boolean;
+    setEditorMode: (mode: EditorMode) => void;
+    currentTool: Tool;
+    setCurrentTool: (tool: Tool) => void;
+    maskPrompt: string;
+    onMaskPromptChange: (text: string) => void;
+    onMaskByText: () => void;
+    isMaskingByText: boolean;
+    onApplyFilter: (prompt: string) => void;
+    showFillButton: boolean;
+    onFillExpanded: () => void;
+
+    // From Toolbar
+    onDescribeImage: () => void;
+    isDescribing: boolean;
+    onDownloadImage: () => void;
+    onUndo: () => void;
+    canUndo: boolean;
+    onRedo: () => void;
+    canRedo: boolean;
+    onVary: () => void;
+    canVary: boolean;
+    onSaveSnapshot: () => void;
+    onViewSnapshots: () => void;
+    onToggleResize: () => void;
+    isResizing: boolean;
+    onConfirmResize: () => void;
+    onCancelResize: () => void;
 }
 
 const BrushSizeSlider: React.FC<{
@@ -63,124 +100,211 @@ const BrushSizeSlider: React.FC<{
     };
 
     return (
-        <>
-            <p className="text-sm text-gray-500 dark:text-dark-text-secondary mb-2">Brush Size: {value}px</p>
-            <div className="relative pt-8">
-                {isPreviewVisible && (
-                    <div 
-                        className="absolute top-0 flex items-center justify-center p-2 bg-white/80 dark:bg-gray-900/80 rounded-md pointer-events-none ring-1 ring-gray-300 dark:ring-gray-600"
-                        style={{
-                            left: `${previewPosition}px`,
-                            transform: 'translateX(-50%)',
-                            width: '110px',
-                            height: '110px',
-                        }}
-                    >
-                        <div style={{
-                            width: `${value}px`,
-                            height: `${value}px`,
-                            backgroundColor: 'rgba(139, 92, 246, 0.5)',
-                            borderRadius: '50%',
-                        }} />
-                    </div>
-                )}
-                <input
-                    ref={sliderRef}
-                    id="brush-size"
-                    type="range"
-                    min="5"
-                    max="100"
-                    value={value}
-                    onMouseDown={() => setIsPreviewVisible(true)}
-                    onMouseUp={() => setIsPreviewVisible(false)}
-                    onMouseLeave={() => setIsPreviewVisible(false)}
-                    onChange={handleChange}
-                    className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
-                    disabled={disabled}
-                />
-            </div>
-        </>
+        <div className="relative pt-8">
+            {isPreviewVisible && (
+                <div 
+                    className="absolute top-0 flex items-center justify-center p-2 bg-surface/80 rounded-md pointer-events-none ring-1 ring-border-muted"
+                    style={{
+                        left: `${previewPosition}px`,
+                        transform: 'translateX(-50%)',
+                        width: '110px',
+                        height: '110px',
+                    }}
+                >
+                    <div style={{
+                        width: `${value}px`,
+                        height: `${value}px`,
+                        backgroundColor: 'rgba(139, 92, 246, 0.5)',
+                        borderRadius: '50%',
+                    }} />
+                </div>
+            )}
+            <input
+                ref={sliderRef}
+                id="brush-size"
+                type="range"
+                min="5"
+                max="100"
+                value={value}
+                onMouseDown={() => setIsPreviewVisible(true)}
+                onMouseUp={() => setIsPreviewVisible(false)}
+                onMouseLeave={() => setIsPreviewVisible(false)}
+                onChange={handleChange}
+                className="w-full h-2 bg-surface-muted rounded-lg appearance-none cursor-pointer"
+                disabled={disabled}
+            />
+        </div>
     );
 };
 
+
 const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
     const {
-        onImageUpload, promptText, onPromptChange, onImprovePrompt, isImprovingPrompt,
+        onGoHome, onImageUpload, onStyleImageUpload, styleImageName, promptText, onPromptChange, onImprovePrompt, isImprovingPrompt,
         onGetAiSuggestions, isAnalyzing, editSuggestions, onStyleSelect,
         brushSize, onBrushSizeChange, onClearMask, onGenerate,
-        isLoading, error, isImageLoaded, editorMode, modeHasPrompt, modeHasMasking
+        isLoading, error, editorMode, setEditorMode, currentTool, setCurrentTool,
+        maskPrompt, onMaskPromptChange, onMaskByText, isMaskingByText, onApplyFilter,
+        showFillButton, onFillExpanded,
+        onDescribeImage, isDescribing, onDownloadImage, onUndo, canUndo, onRedo, canRedo, onVary, canVary,
+        onSaveSnapshot, onViewSnapshots, onToggleResize, isResizing, onConfirmResize, onCancelResize
     } = props;
 
+    const currentModeConfig = modeConfig[editorMode];
+
+    const getGenerateButtonText = () => {
+        if (isLoading) return 'Generating...';
+        switch (editorMode) {
+            case 'enhance': return 'Enhance Image';
+            case 'style_transfer': return 'Apply Style';
+            default: return 'Generate';
+        }
+    };
+    
+    const isGenerateDisabled = () => {
+        if (isLoading || isResizing) return true;
+        if (editorMode === 'style_transfer' && !styleImageName) return true;
+        if (currentModeConfig.hasPrompt && !promptText) return true;
+        return false;
+    };
+
     return (
-        <div className="lg:col-span-1 bg-white dark:bg-dark-surface p-6 rounded-lg shadow-lg flex flex-col gap-6">
-            <div>
-                <label htmlFor="file-upload" className="block text-sm font-medium text-gray-600 dark:text-dark-text mb-2">1. Upload Image</label>
-                <label htmlFor="file-upload" className="cursor-pointer bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-dark-text font-bold py-3 px-4 rounded-md inline-flex items-center justify-center w-full transition-colors">
+        <div className="bg-surface p-4 rounded-lg shadow-lg flex flex-col gap-4 h-full">
+             <div className="flex items-center gap-2 pb-2 border-b border-border-base">
+                <button onClick={onGoHome} className="p-2 bg-surface-muted hover:bg-surface-muted-hover text-text-primary rounded-md transition-colors" title="Back to Home"><HomeIcon /></button>
+                <label htmlFor="file-upload" className="flex-grow cursor-pointer bg-surface-secondary hover:bg-surface-muted text-text-primary font-bold py-2 px-4 rounded-md inline-flex items-center justify-center transition-colors">
                     <UploadIcon />
-                    <span className="ml-2">{isImageLoaded ? 'Change Image' : 'Select Image'}</span>
+                    <span className="ml-2">Change Image</span>
                 </label>
                 <input id="file-upload" type="file" accept="image/*" onChange={onImageUpload} className="hidden" />
-            </div>
-                
-            {modeHasPrompt && (
+             </div>
+
+            <fieldset disabled={isResizing} className="flex flex-col gap-4 disabled:opacity-50">
                 <div>
-                    <div className="flex justify-between items-center mb-2">
-                        <label htmlFor="prompt" className="block text-sm font-medium text-gray-600 dark:text-dark-text">2. Describe Your Edit</label>
-                        <button 
-                            onClick={onImprovePrompt} 
-                            disabled={!promptText.trim() || isImprovingPrompt || !isImageLoaded}
-                            className="text-xs inline-flex items-center gap-1 text-sky-600 dark:text-sky-400 hover:text-sky-500 dark:hover:text-sky-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                            title="Improve prompt with AI"
-                        >
-                            {isImprovingPrompt ? <Spinner className="h-4 w-4" /> : <SparklesIcon className="h-4 w-4" />}
-                            <span>Improve</span>
-                        </button>
+                    <h3 className="text-sm font-medium text-text-tertiary mb-2">Tools</h3>
+                    <div className="grid grid-cols-5 gap-2">
+                        {Object.entries(modeConfig).map(([key, { name, icon: Icon }]) => (
+                            <button
+                                key={key}
+                                onClick={() => setEditorMode(key as EditorMode)}
+                                title={name}
+                                className={`p-2 rounded-md flex flex-col items-center justify-center text-xs gap-1 ${editorMode === key ? 'bg-brand text-brand-text' : 'bg-surface-muted hover:bg-surface-muted-hover text-text-tertiary'}`}
+                            >
+                                <Icon className="h-5 w-5" />
+                                <span>{name}</span>
+                            </button>
+                        ))}
                     </div>
+                </div>
 
-                    <textarea id="prompt" value={promptText} onChange={(e) => onPromptChange(e.target.value)}
-                        placeholder={editorMode === 'replace_bg' ? "e.g., 'a vibrant, colorful city street'" : "e.g., 'a majestic castle in the background'"}
-                        className="w-full bg-white dark:bg-dark-bg border border-gray-300 dark:border-dark-border rounded-md p-3 text-gray-800 dark:text-dark-text focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
-                        rows={3} disabled={!isImageLoaded}/>
-                    
-                    <div className="mt-4">
-                        <button 
-                            onClick={onGetAiSuggestions}
-                            disabled={!isImageLoaded || isAnalyzing}
-                            className="w-full bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-dark-text font-bold py-2 px-4 rounded-md inline-flex items-center justify-center transition-colors disabled:opacity-50"
-                        >
-                            {isAnalyzing ? <Spinner /> : <LightBulbIcon />}
-                            <span className="ml-2">{isAnalyzing ? 'Analyzing...' : 'Get AI Suggestions'}</span>
-                        </button>
-                    </div>
-
-                     {editSuggestions.length > 0 && (
-                        <div className="mt-4">
-                            <h4 className="text-sm font-medium text-gray-600 dark:text-dark-text mb-2 flex items-center">Suggestions</h4>
-                            <div className="flex flex-wrap gap-2">{editSuggestions.map((suggestion, index) => (<button key={index} onClick={() => onPromptChange(suggestion)} className="bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-dark-text text-xs font-medium py-1 px-3 rounded-full transition-colors">{suggestion}</button>))}</div>
+                <div className="flex flex-col gap-4">
+                     {currentModeConfig.hasMasking && (
+                        <div className="p-3 bg-bg rounded-lg">
+                            <h4 className="text-sm font-medium text-text-tertiary mb-2">Masking Options</h4>
+                            <div className="flex items-center gap-2 mb-2">
+                                <button onClick={() => setCurrentTool('brush')} title="Brush Tool" className={`flex-1 py-2 px-3 rounded-md text-sm inline-flex items-center justify-center gap-2 ${currentTool === 'brush' ? 'bg-brand text-brand-text' : 'bg-surface-muted hover:bg-surface-muted-hover text-text-tertiary'}`}>
+                                    <BrushIcon /> Brush
+                                </button>
+                                <button onClick={() => setCurrentTool('eraser')} title="Eraser Tool" className={`flex-1 py-2 px-3 rounded-md text-sm inline-flex items-center justify-center gap-2 ${currentTool === 'eraser' ? 'bg-brand text-brand-text' : 'bg-surface-muted hover:bg-surface-muted-hover text-text-tertiary'}`}>
+                                    <EraserIcon /> Eraser
+                                </button>
+                            </div>
+                            <div className="flex items-center gap-2">
+                               <input type="text" placeholder="e.g., 'the person'" value={maskPrompt} onChange={(e) => onMaskPromptChange(e.target.value)}
+                                   className="flex-grow bg-surface border border-border-muted rounded-md p-2 text-sm text-text-primary focus:ring-2 focus:ring-brand" disabled={isMaskingByText} />
+                               <button onClick={onMaskByText} disabled={!maskPrompt.trim() || isMaskingByText}
+                                   className="bg-surface-muted hover:bg-surface-muted-hover font-bold p-2 rounded-md" title="Auto-mask from text">
+                                {isMaskingByText ? <Spinner className="h-5 w-5" /> : <WandIcon className="h-5 w-5" />}
+                               </button>
+                            </div>
+                            <div className="mt-2">
+                                <p className="text-sm font-medium text-text-tertiary mb-2">Brush Size: {brushSize}px</p>
+                                <BrushSizeSlider value={brushSize} onChange={onBrushSizeChange} disabled={false} />
+                            </div>
                         </div>
                     )}
-                    {editorMode === 'edit' && <div className="mt-4"><StylePresets onSelect={onStyleSelect} /></div> }
+
+                    {currentModeConfig.hasPrompt && (
+                         <div>
+                            <div className="flex justify-between items-center mb-2">
+                                <label htmlFor="prompt" className="text-sm font-medium text-text-tertiary">Prompt</label>
+                                <button onClick={onImprovePrompt} disabled={!promptText.trim() || isImprovingPrompt}
+                                    className="text-xs inline-flex items-center gap-1 text-brand-subtle-text hover:text-brand" title="Improve prompt with AI">
+                                    {isImprovingPrompt ? <Spinner className="h-4 w-4" /> : <SparklesIcon className="h-4 w-4" />} Improve
+                                </button>
+                            </div>
+                            <textarea id="prompt" value={promptText} onChange={(e) => onPromptChange(e.target.value)}
+                                placeholder={(editorMode === 'replace_bg' ? "Describe the new background..." : "Describe your edit...")}
+                                className="w-full bg-bg border border-border-muted rounded-md p-3 text-text-primary focus:ring-2 focus:ring-brand" rows={3}/>
+                            <button onClick={onGetAiSuggestions} disabled={isAnalyzing} className="w-full mt-2 bg-surface-secondary hover:bg-surface-muted font-bold py-2 px-4 rounded-md inline-flex items-center justify-center">
+                                {isAnalyzing ? <Spinner /> : <LightBulbIcon />} <span className="ml-2">{isAnalyzing ? 'Analyzing...' : 'Get AI Suggestions'}</span>
+                            </button>
+                             {editSuggestions.length > 0 && (
+                                <div className="mt-2">
+                                    <div className="flex flex-wrap gap-2">{editSuggestions.map((suggestion, index) => (<button key={index} onClick={() => onPromptChange(suggestion)} className="bg-surface-muted hover:bg-surface-muted-hover text-xs font-medium py-1 px-3 rounded-full">{suggestion}</button>))}</div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    
+                    {editorMode === 'edit' && <StylePresets onSelect={onStyleSelect} />}
+                    {editorMode === 'style_transfer' && (
+                        <div>
+                             <label htmlFor="style-upload" className="block text-sm font-medium text-text-tertiary mb-2">Style Image</label>
+                             <label htmlFor="style-upload" className="cursor-pointer bg-surface-secondary hover:bg-surface-muted py-3 px-4 rounded-md inline-flex items-center justify-center w-full">
+                                <UploadIcon /> <span className="ml-2 truncate">{styleImageName || 'Select Style Image'}</span>
+                            </label>
+                            <input id="style-upload" type="file" accept="image/*" onChange={onStyleImageUpload} className="hidden" />
+                        </div>
+                    )}
                 </div>
-            )}
                 
-            {modeHasMasking && (
-                <div>
-                    <label className="block text-sm font-medium text-gray-600 dark:text-dark-text mb-2">3. Draw Mask</label>
-                    <BrushSizeSlider value={brushSize} onChange={onBrushSizeChange} disabled={!isImageLoaded} />
+                <AiFilters onApplyFilter={onApplyFilter} />
+
+                <div className="flex flex-col gap-2 pt-2 border-t border-border-base">
+                     {showFillButton && (
+                         <button onClick={onFillExpanded} disabled={isLoading} className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-4 rounded-md inline-flex items-center justify-center">
+                            {isLoading ? <Spinner /> : <SparklesIcon />} <span className="ml-2">Fill Expanded Area</span>
+                        </button>
+                    )}
+                     {currentModeConfig.hasMasking && (
+                        <button onClick={onClearMask} disabled={isLoading} className="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-md inline-flex items-center justify-center">
+                            <EraserIcon /><span className="ml-2">Clear Mask</span>
+                        </button>
+                    )}
+                    <button onClick={onGenerate} disabled={isGenerateDisabled()} className="w-full bg-brand hover:bg-brand-hover text-brand-text font-bold py-3 px-4 rounded-md inline-flex items-center justify-center">
+                        {isLoading ? <Spinner /> : <SparklesIcon />}
+                        <span className="ml-2">{getGenerateButtonText()}</span>
+                    </button>
+                </div>
+            </fieldset>
+
+            {isResizing && (
+                <div className="p-3 bg-brand-subtle-bg rounded-lg flex flex-col gap-2">
+                    <h4 className="text-sm font-bold text-brand-subtle-text">Resize Mode</h4>
+                    <p className="text-xs text-brand-subtle-text/80">Drag handles on the canvas to resize. Press Enter to confirm or Esc to cancel.</p>
+                     <div className="flex items-center gap-2">
+                        <button onClick={onCancelResize} className="flex-1 bg-surface-muted hover:bg-surface-muted-hover text-text-primary font-bold py-2 px-4 rounded-md text-sm">Cancel</button>
+                        <button onClick={onConfirmResize} className="flex-1 bg-brand hover:bg-brand-hover text-brand-text font-bold py-2 px-4 rounded-md text-sm">Confirm</button>
+                    </div>
                 </div>
             )}
-            <div className="flex flex-col gap-4">
-                {modeHasMasking && (
-                    <button onClick={onClearMask} disabled={!isImageLoaded || isLoading} className="w-full bg-gray-500 hover:bg-gray-600 dark:bg-gray-600 dark:hover:bg-gray-500 text-white dark:text-dark-text font-bold py-3 px-4 rounded-md inline-flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                        <EraserIcon /><span className="ml-2">Clear Mask</span>
-                    </button>
-                )}
-                <button onClick={onGenerate} disabled={!isImageLoaded || isLoading || (modeHasPrompt && !promptText)} className="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-3 px-4 rounded-md inline-flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                    {isLoading && editorMode !== 'enhance' ? <Spinner /> : <SparklesIcon />}
-                    <span className="ml-2">{isLoading ? 'Generating...' : (editorMode === 'enhance' ? 'Enhance Image' : 'Generate')}</span>
-                </button>
+
+            <div className="pt-2 border-t border-border-base mt-auto">
+                 <h3 className="text-sm font-medium text-text-tertiary mb-2">History & Actions</h3>
+                 <div className="grid grid-cols-4 gap-2">
+                    <button onClick={onUndo} title="Undo" disabled={!canUndo} className="p-2 bg-surface-muted rounded-md disabled:opacity-50 flex items-center justify-center"><UndoIcon/></button>
+                    <button onClick={onRedo} title="Redo" disabled={!canRedo} className="p-2 bg-surface-muted rounded-md disabled:opacity-50 flex items-center justify-center"><RedoIcon/></button>
+                    <button onClick={onSaveSnapshot} title="Save Snapshot" className="p-2 bg-surface-muted rounded-md disabled:opacity-50 flex items-center justify-center"><SaveSnapshotIcon/></button>
+                    <button onClick={onViewSnapshots} title="View Snapshots" className="p-2 bg-surface-muted rounded-md disabled:opacity-50 flex items-center justify-center"><ViewSnapshotsIcon/></button>
+                    {editorMode === 'edit' && <button onClick={onVary} title="Vary Result" disabled={!canVary} className="p-2 bg-surface-muted rounded-md disabled:opacity-50 flex items-center justify-center"><VaryIcon/></button>}
+                    <button onClick={onToggleResize} title="Resize" className={`p-2 rounded-md flex items-center justify-center ${isResizing ? 'bg-brand text-brand-text' : 'bg-surface-muted'}`}><ResizeIcon/></button>
+                    <button onClick={onDescribeImage} title="Describe & Recreate" disabled={isDescribing} className="p-2 bg-surface-muted rounded-md disabled:opacity-50 flex items-center justify-center">{isDescribing ? <Spinner/> : <CodeIcon/>}</button>
+                    <button onClick={onDownloadImage} title="Download" className="p-2 bg-surface-muted rounded-md disabled:opacity-50 flex items-center justify-center"><DownloadIcon/></button>
+                 </div>
             </div>
-            <div className="mt-auto">{error && <div className="mt-4 p-3 bg-red-100 dark:bg-red-900/50 border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 rounded-md text-sm">{error}</div>}</div>
+
+            {error && <div className="p-3 bg-error-bg border border-error-border text-error-text rounded-md text-sm">{error}</div>}
         </div>
     );
 };

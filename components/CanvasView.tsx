@@ -1,27 +1,63 @@
-import React from 'react';
-import { ZoomInIcon, ZoomOutIcon, ResetViewIcon } from './Icon';
+import React, { useState, useRef, useEffect } from 'react';
+import { ZoomInIcon, ZoomOutIcon, FitScreenIcon, FillScreenIcon } from './Icon';
 import Spinner from './Spinner';
 
 interface ViewControlsProps {
     onZoomIn: () => void;
     onZoomOut: () => void;
-    onResetView: () => void;
+    onFitScreen: () => void;
+    onFillScreen: () => void;
+    onZoomToPercentage: (percentage: number) => void;
     zoomLevel: number;
 }
 
-const ViewControls: React.FC<ViewControlsProps> = ({ onZoomIn, onZoomOut, onResetView, zoomLevel }) => (
-    <div className="absolute bottom-4 left-4 bg-white/50 dark:bg-black/50 p-2 rounded-lg shadow-md backdrop-blur-sm flex flex-col items-stretch gap-2 z-10">
-        <div className="flex items-center gap-2" role="toolbar" aria-label="View Controls">
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300 hidden sm:inline-block pr-2">View:</span>
-            <button onClick={onZoomOut} title="Zoom Out" className="p-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-md disabled:opacity-50 flex-1"><ZoomOutIcon/></button>
-            <button onClick={onResetView} title="Reset View" className="p-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-md disabled:opacity-50 flex-1"><ResetViewIcon/></button>
-            <button onClick={onZoomIn} title="Zoom In" className="p-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-md disabled:opacity-50 flex-1"><ZoomInIcon/></button>
+const ViewControls: React.FC<ViewControlsProps> = ({ onZoomIn, onZoomOut, onFitScreen, onFillScreen, onZoomToPercentage, zoomLevel }) => {
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const zoomPresets = [25, 50, 100, 200, 400];
+
+    return (
+        <div className="absolute bottom-4 left-4 bg-surface-translucent p-1 rounded-lg shadow-md backdrop-blur-sm flex items-center gap-1 z-10" role="toolbar" aria-label="View Controls">
+            <button onClick={onZoomOut} title="Zoom Out" className="p-2 hover:bg-surface-muted/50 text-text-tertiary rounded-md"><ZoomOutIcon/></button>
+            
+            <div className="relative" ref={dropdownRef}>
+                <button onClick={() => setIsDropdownOpen(prev => !prev)} className="text-sm font-semibold text-text-tertiary bg-surface/70 hover:bg-surface-muted/50 px-3 py-2 rounded-md w-24 text-center">
+                    {Math.round(zoomLevel * 100)}%
+                </button>
+                {isDropdownOpen && (
+                    <div className="absolute bottom-full mb-2 w-48 bg-surface rounded-md shadow-lg border border-border-base p-2">
+                        <button onClick={() => { onFitScreen(); setIsDropdownOpen(false); }} className="w-full text-left px-3 py-2 rounded-md hover:bg-surface-muted text-text-primary flex items-center gap-2">
+                           <FitScreenIcon /> Fit to Screen
+                        </button>
+                        <button onClick={() => { onFillScreen(); setIsDropdownOpen(false); }} className="w-full text-left px-3 py-2 rounded-md hover:bg-surface-muted text-text-primary flex items-center gap-2">
+                           <FillScreenIcon /> Fill Screen
+                        </button>
+                        <div className="my-1 border-t border-border-base"></div>
+                        {zoomPresets.map(p => (
+                            <button key={p} onClick={() => { onZoomToPercentage(p); setIsDropdownOpen(false); }} className="w-full text-left px-3 py-2 rounded-md hover:bg-surface-muted text-text-primary">
+                                Zoom to {p}%
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            <button onClick={onZoomIn} title="Zoom In" className="p-2 hover:bg-surface-muted/50 text-text-tertiary rounded-md"><ZoomInIcon/></button>
         </div>
-        <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 bg-white/70 dark:bg-gray-900/70 px-2 py-1 rounded-md w-full text-center">
-            {Math.round(zoomLevel * 100)}%
-        </span>
-    </div>
-);
+    );
+};
+
 
 interface CanvasViewProps {
     containerRef: React.RefObject<HTMLDivElement>;
@@ -36,33 +72,46 @@ interface CanvasViewProps {
     onMouseMove: (e: React.MouseEvent) => void;
     onMouseUp: (e: React.MouseEvent) => void;
     onMouseLeave: (e: React.MouseEvent) => void;
+    onWheel: (e: React.WheelEvent) => void;
+    onTouchStart: (e: React.TouchEvent) => void;
+    onTouchMove: (e: React.TouchEvent) => void;
+    onTouchEnd: (e: React.TouchEvent) => void;
     onZoomIn: () => void;
     onZoomOut: () => void;
-    onResetView: () => void;
+    onFitScreen: () => void;
+    onFillScreen: () => void;
+    onZoomToPercentage: (percentage: number) => void;
 }
 
 const CanvasView: React.FC<CanvasViewProps> = (props) => {
     const {
         containerRef, canvasRef, maskCanvasRef,
         originalImage, transform, cursorStyle, isLoading, loadingMessage,
-        onMouseDown, onMouseMove, onMouseUp, onMouseLeave,
-        onZoomIn, onZoomOut, onResetView
+        onMouseDown, onMouseMove, onMouseUp, onMouseLeave, onWheel,
+        onTouchStart, onTouchMove, onTouchEnd,
+        onZoomIn, onZoomOut, onFitScreen, onFillScreen, onZoomToPercentage
     } = props;
+
+    const showPlaceholder = !originalImage;
 
     return (
         <div 
             ref={containerRef}
-            className="bg-gray-200 dark:bg-dark-surface rounded-lg shadow-lg aspect-square relative overflow-hidden" 
+            className="bg-surface-muted rounded-lg shadow-lg aspect-square relative overflow-hidden" 
             onMouseDown={onMouseDown} 
             onMouseMove={onMouseMove} 
             onMouseUp={onMouseUp} 
             onMouseLeave={onMouseLeave} 
+            onWheel={onWheel}
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
         >
-            {!originalImage && (
+            {showPlaceholder && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="text-center text-gray-500 dark:text-dark-text-secondary">
-                        <p className="text-lg font-medium">Image preview will appear here</p>
-                        <p>Start by uploading an image.</p>
+                    <div className="text-center text-text-secondary">
+                        <p className="text-lg font-medium">Your image will appear here</p>
+                        <p>Start by uploading an image on the editor sidebar.</p>
                     </div>
                 </div>
             )}
@@ -79,7 +128,7 @@ const CanvasView: React.FC<CanvasViewProps> = (props) => {
             <canvas ref={maskCanvasRef} className="hidden" />
             
             {isLoading && (
-                <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-20">
+                <div className="absolute inset-0 bg-overlay flex flex-col items-center justify-center z-20">
                     <Spinner />
                     <p className="mt-4 text-lg text-gray-300">{loadingMessage}</p>
                 </div>
@@ -89,7 +138,9 @@ const CanvasView: React.FC<CanvasViewProps> = (props) => {
                 <ViewControls 
                     onZoomIn={onZoomIn}
                     onZoomOut={onZoomOut}
-                    onResetView={onResetView}
+                    onFitScreen={onFitScreen}
+                    onFillScreen={onFillScreen}
+                    onZoomToPercentage={onZoomToPercentage}
                     zoomLevel={transform.scale}
                 />
             )}
