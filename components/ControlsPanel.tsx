@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { UploadIcon, SparklesIcon, EraserIcon, LightBulbIcon, WandIcon, RefreshIcon, HomeIcon, BrushIcon, CodeIcon, DownloadIcon, EnhanceIcon, RedoIcon, RemoveObjectIcon, ReplaceBackgroundIcon, UndoIcon, VaryIcon, StyleTransferIcon, SaveSnapshotIcon, ViewSnapshotsIcon, ResizeIcon } from './Icon';
+import { UploadIcon, SparklesIcon, EraserIcon, LightBulbIcon, WandIcon, RefreshIcon, HomeIcon, BrushIcon, CodeIcon, DownloadIcon, EnhanceIcon, RedoIcon, RemoveObjectIcon, ReplaceBackgroundIcon, UndoIcon, VaryIcon, StyleTransferIcon, SaveSnapshotIcon, ViewSnapshotsIcon, ResizeIcon, TransformIcon } from './Icon';
 import Spinner from './Spinner';
 import StylePresets from './StylePresets';
 import { EditorMode, Tool } from './EditorPage';
@@ -9,6 +9,8 @@ export const modeConfig: Record<EditorMode, { name: string; icon: React.FC<any>;
     edit: { name: "Edit", icon: BrushIcon, hasPrompt: true, hasMasking: true },
     remove: { name: "Remove", icon: RemoveObjectIcon, hasPrompt: false, hasMasking: true },
     replace_bg: { name: "Replace BG", icon: ReplaceBackgroundIcon, hasPrompt: true, hasMasking: true },
+    resize: { name: "Resize", icon: ResizeIcon, hasPrompt: false, hasMasking: false },
+    transform: { name: "Transform", icon: TransformIcon, hasPrompt: false, hasMasking: false },
     enhance: { name: "Enhance", icon: EnhanceIcon, hasPrompt: false, hasMasking: false },
     style_transfer: { name: "Style Transfer", icon: StyleTransferIcon, hasPrompt: false, hasMasking: false },
 };
@@ -57,10 +59,18 @@ interface ControlsPanelProps {
     canVary: boolean;
     onSaveSnapshot: () => void;
     onViewSnapshots: () => void;
-    onToggleResize: () => void;
-    isResizing: boolean;
     onConfirmResize: () => void;
     onCancelResize: () => void;
+
+    // Transform Props
+    rotation: number;
+    onRotationChange: (value: number) => void;
+    skewX: number;
+    onSkewXChange: (value: number) => void;
+    skewY: number;
+    onSkewYChange: (value: number) => void;
+    onApplyTransform: () => void;
+    onCancelTransform: () => void;
 }
 
 const BrushSizeSlider: React.FC<{
@@ -147,10 +157,12 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
         maskPrompt, onMaskPromptChange, onMaskByText, isMaskingByText, onApplyFilter,
         showFillButton, onFillExpanded,
         onDescribeImage, isDescribing, onDownloadImage, onUndo, canUndo, onRedo, canRedo, onVary, canVary,
-        onSaveSnapshot, onViewSnapshots, onToggleResize, isResizing, onConfirmResize, onCancelResize
+        onSaveSnapshot, onViewSnapshots, onConfirmResize, onCancelResize,
+        rotation, onRotationChange, skewX, onSkewXChange, skewY, onSkewYChange, onApplyTransform, onCancelTransform
     } = props;
 
     const currentModeConfig = modeConfig[editorMode];
+    const isTransforming = editorMode === 'resize' || editorMode === 'transform';
 
     const getGenerateButtonText = () => {
         if (isLoading) return 'Generating...';
@@ -162,7 +174,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
     };
     
     const isGenerateDisabled = () => {
-        if (isLoading || isResizing) return true;
+        if (isLoading || isTransforming) return true;
         if (editorMode === 'style_transfer' && !styleImageName) return true;
         if (currentModeConfig.hasPrompt && !promptText) return true;
         return false;
@@ -179,10 +191,10 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                 <input id="file-upload" type="file" accept="image/*" onChange={onImageUpload} className="hidden" />
              </div>
 
-            <fieldset disabled={isResizing} className="flex flex-col gap-4 disabled:opacity-50">
+            <fieldset disabled={isTransforming} className="flex flex-col gap-4 disabled:opacity-50">
                 <div>
                     <h3 className="text-sm font-medium text-text-tertiary mb-2">Tools</h3>
-                    <div className="grid grid-cols-5 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                         {Object.entries(modeConfig).map(([key, { name, icon: Icon }]) => (
                             <button
                                 key={key}
@@ -279,7 +291,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                 </div>
             </fieldset>
 
-            {isResizing && (
+            {editorMode === 'resize' && (
                 <div className="p-3 bg-brand-subtle-bg rounded-lg flex flex-col gap-2">
                     <h4 className="text-sm font-bold text-brand-subtle-text">Resize Mode</h4>
                     <p className="text-xs text-brand-subtle-text/80">Drag handles on the canvas to resize. Press Enter to confirm or Esc to cancel.</p>
@@ -290,17 +302,52 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                 </div>
             )}
 
+            {editorMode === 'transform' && (
+                <div className="p-3 bg-brand-subtle-bg rounded-lg flex flex-col gap-4">
+                    <h4 className="text-sm font-bold text-brand-subtle-text">Transform Controls</h4>
+                    
+                    <div className="flex flex-col gap-1">
+                        <label htmlFor="rotation" className="text-xs text-brand-subtle-text/80 flex justify-between">
+                            <span>Rotation</span>
+                            <span>{rotation}°</span>
+                        </label>
+                        <input id="rotation" type="range" min="-180" max="180" value={rotation} onChange={(e) => onRotationChange(Number(e.target.value))} className="w-full h-2 bg-surface-muted rounded-lg appearance-none cursor-pointer" />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                        <label htmlFor="skewX" className="text-xs text-brand-subtle-text/80 flex justify-between">
+                            <span>Skew X</span>
+                            <span>{skewX}°</span>
+                        </label>
+                        <input id="skewX" type="range" min="-45" max="45" value={skewX} onChange={(e) => onSkewXChange(Number(e.target.value))} className="w-full h-2 bg-surface-muted rounded-lg appearance-none cursor-pointer" />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                        <label htmlFor="skewY" className="text-xs text-brand-subtle-text/80 flex justify-between">
+                            <span>Skew Y</span>
+                            <span>{skewY}°</span>
+                        </label>
+                        <input id="skewY" type="range" min="-45" max="45" value={skewY} onChange={(e) => onSkewYChange(Number(e.target.value))} className="w-full h-2 bg-surface-muted rounded-lg appearance-none cursor-pointer" />
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <button onClick={() => { onRotationChange(0); onSkewXChange(0); onSkewYChange(0); }} className="flex-1 bg-surface-muted hover:bg-surface-muted-hover text-text-primary font-bold py-2 px-4 rounded-md text-sm">Reset</button>
+                        <button onClick={onCancelTransform} className="flex-1 bg-surface-muted hover:bg-surface-muted-hover text-text-primary font-bold py-2 px-4 rounded-md text-sm">Cancel</button>
+                        <button onClick={onApplyTransform} className="flex-1 bg-brand hover:bg-brand-hover text-brand-text font-bold py-2 px-4 rounded-md text-sm">Apply</button>
+                    </div>
+                </div>
+            )}
+
             <div className="pt-2 border-t border-border-base mt-auto">
                  <h3 className="text-sm font-medium text-text-tertiary mb-2">History & Actions</h3>
                  <div className="grid grid-cols-4 gap-2">
-                    <button onClick={onUndo} title="Undo" disabled={!canUndo} className="p-2 bg-surface-muted rounded-md disabled:opacity-50 flex items-center justify-center"><UndoIcon/></button>
-                    <button onClick={onRedo} title="Redo" disabled={!canRedo} className="p-2 bg-surface-muted rounded-md disabled:opacity-50 flex items-center justify-center"><RedoIcon/></button>
-                    <button onClick={onSaveSnapshot} title="Save Snapshot" className="p-2 bg-surface-muted rounded-md disabled:opacity-50 flex items-center justify-center"><SaveSnapshotIcon/></button>
-                    <button onClick={onViewSnapshots} title="View Snapshots" className="p-2 bg-surface-muted rounded-md disabled:opacity-50 flex items-center justify-center"><ViewSnapshotsIcon/></button>
-                    {editorMode === 'edit' && <button onClick={onVary} title="Vary Result" disabled={!canVary} className="p-2 bg-surface-muted rounded-md disabled:opacity-50 flex items-center justify-center"><VaryIcon/></button>}
-                    <button onClick={onToggleResize} title="Resize" className={`p-2 rounded-md flex items-center justify-center ${isResizing ? 'bg-brand text-brand-text' : 'bg-surface-muted'}`}><ResizeIcon/></button>
-                    <button onClick={onDescribeImage} title="Describe & Recreate" disabled={isDescribing} className="p-2 bg-surface-muted rounded-md disabled:opacity-50 flex items-center justify-center">{isDescribing ? <Spinner/> : <CodeIcon/>}</button>
-                    <button onClick={onDownloadImage} title="Download" className="p-2 bg-surface-muted rounded-md disabled:opacity-50 flex items-center justify-center"><DownloadIcon/></button>
+                    <button onClick={onUndo} title="Undo" disabled={!canUndo || isTransforming} className="p-2 bg-surface-muted rounded-md disabled:opacity-50 flex items-center justify-center"><UndoIcon/></button>
+                    <button onClick={onRedo} title="Redo" disabled={!canRedo || isTransforming} className="p-2 bg-surface-muted rounded-md disabled:opacity-50 flex items-center justify-center"><RedoIcon/></button>
+                    <button onClick={onSaveSnapshot} title="Save Snapshot" disabled={isTransforming} className="p-2 bg-surface-muted rounded-md disabled:opacity-50 flex items-center justify-center"><SaveSnapshotIcon/></button>
+                    <button onClick={onViewSnapshots} title="View Snapshots" disabled={isTransforming} className="p-2 bg-surface-muted rounded-md disabled:opacity-50 flex items-center justify-center"><ViewSnapshotsIcon/></button>
+                    {editorMode === 'edit' && <button onClick={onVary} title="Vary Result" disabled={!canVary || isTransforming} className="p-2 bg-surface-muted rounded-md disabled:opacity-50 flex items-center justify-center"><VaryIcon/></button>}
+                    <button onClick={onDescribeImage} title="Describe & Recreate" disabled={isDescribing || isTransforming} className="p-2 bg-surface-muted rounded-md disabled:opacity-50 flex items-center justify-center">{isDescribing ? <Spinner/> : <CodeIcon/>}</button>
+                    <button onClick={onDownloadImage} title="Download" disabled={isTransforming} className="p-2 bg-surface-muted rounded-md disabled:opacity-50 flex items-center justify-center"><DownloadIcon/></button>
                  </div>
             </div>
 

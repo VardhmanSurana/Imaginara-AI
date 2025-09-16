@@ -2,7 +2,8 @@ import { useState, useCallback } from 'react';
 
 export const useImageHistory = (
     loadImage: (dataUrl: string, callback?: (img: HTMLImageElement) => void) => void,
-    clearMask: () => void
+    clearMask: () => void,
+    clearLastGenerationParams: () => void
 ) => {
     const [history, setHistory] = useState<string[]>([]);
     const [historyIndex, setHistoryIndex] = useState(-1);
@@ -16,8 +17,9 @@ export const useImageHistory = (
             setHistoryIndex(newIndex);
             loadImage(history[newIndex]);
             clearMask();
+            clearLastGenerationParams();
         }
-    }, [canUndo, history, historyIndex, loadImage, clearMask]);
+    }, [canUndo, history, historyIndex, loadImage, clearMask, clearLastGenerationParams]);
 
     const handleRedo = useCallback(() => {
         if (canRedo) {
@@ -25,8 +27,9 @@ export const useImageHistory = (
             setHistoryIndex(newIndex);
             loadImage(history[newIndex]);
             clearMask();
+            clearLastGenerationParams();
         }
-    }, [canRedo, history, historyIndex, loadImage, clearMask]);
+    }, [canRedo, history, historyIndex, loadImage, clearMask, clearLastGenerationParams]);
 
     const updateHistory = useCallback((newImageSrc: string) => {
         const newHistory = history.slice(0, historyIndex + 1);

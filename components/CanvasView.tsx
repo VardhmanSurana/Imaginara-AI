@@ -1,6 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ZoomInIcon, ZoomOutIcon, FitScreenIcon, FillScreenIcon } from './Icon';
 import Spinner from './Spinner';
+import { BoundingBox } from '../types';
+
+type EditorMode = 'edit' | 'remove' | 'replace_bg' | 'enhance' | 'style_transfer' | 'resize' | 'transform';
 
 interface ViewControlsProps {
     onZoomIn: () => void;
@@ -10,6 +13,27 @@ interface ViewControlsProps {
     onZoomToPercentage: (percentage: number) => void;
     zoomLevel: number;
 }
+
+const handleToCursorMap: { [key: string]: string } = {
+    topLeft: 'nwse-resize', top: 'ns-resize', topRight: 'nesw-resize',
+    left: 'ew-resize', right: 'ew-resize',
+    bottomLeft: 'nesw-resize', bottom: 'ns-resize', bottomRight: 'nwse-resize',
+};
+
+const getHandles = (box: BoundingBox) => {
+    const { x, y, width, height } = box;
+    return {
+        topLeft: { x, y },
+        top: { x: x + width / 2, y },
+        topRight: { x: x + width, y },
+        left: { x, y: y + height / 2 },
+        right: { x: x + width, y: y + height / 2 },
+        bottomLeft: { x, y: y + height },
+        bottom: { x: x + width / 2, y: y + height },
+        bottomRight: { x: x + width, y: y + height },
+    };
+};
+
 
 const ViewControls: React.FC<ViewControlsProps> = ({ onZoomIn, onZoomOut, onFitScreen, onFillScreen, onZoomToPercentage, zoomLevel }) => {
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -81,6 +105,11 @@ interface CanvasViewProps {
     onFitScreen: () => void;
     onFillScreen: () => void;
     onZoomToPercentage: (percentage: number) => void;
+    editorMode: EditorMode;
+    resizeBox: BoundingBox | null;
+    rotation: number;
+    skewX: number;
+    skewY: number;
 }
 
 const CanvasView: React.FC<CanvasViewProps> = (props) => {
@@ -89,7 +118,8 @@ const CanvasView: React.FC<CanvasViewProps> = (props) => {
         originalImage, transform, cursorStyle, isLoading, loadingMessage,
         onMouseDown, onMouseMove, onMouseUp, onMouseLeave, onWheel,
         onTouchStart, onTouchMove, onTouchEnd,
-        onZoomIn, onZoomOut, onFitScreen, onFillScreen, onZoomToPercentage
+        onZoomIn, onZoomOut, onFitScreen, onFillScreen, onZoomToPercentage,
+        editorMode, resizeBox, rotation, skewX, skewY
     } = props;
 
     const showPlaceholder = !originalImage;
@@ -97,7 +127,7 @@ const CanvasView: React.FC<CanvasViewProps> = (props) => {
     return (
         <div 
             ref={containerRef}
-            className="bg-surface-muted rounded-lg shadow-lg aspect-square relative overflow-hidden" 
+            className={`bg-surface-muted rounded-lg shadow-lg aspect-square relative ${editorMode === 'resize' ? '' : 'overflow-hidden'}`}
             onMouseDown={onMouseDown} 
             onMouseMove={onMouseMove} 
             onMouseUp={onMouseUp} 
@@ -119,13 +149,49 @@ const CanvasView: React.FC<CanvasViewProps> = (props) => {
                 ref={canvasRef}
                 style={{ 
                     display: originalImage ? 'block' : 'none', 
-                    transform: `translate(${transform.offsetX}px, ${transform.offsetY}px) scale(${transform.scale})`, 
+                    transform: `translate(${transform.offsetX}px, ${transform.offsetY}px) scale(${transform.scale}) rotate(${rotation}deg) skew(${skewX}deg, ${skewY}deg)`, 
                     transformOrigin: 'top left', 
                     touchAction: 'none', 
                     cursor: cursorStyle 
                 }}
             />
             <canvas ref={maskCanvasRef} className="hidden" />
+
+            {editorMode === 'resize' && resizeBox && (
+                <div
+                    style={{
+                        position: 'absolute',
+                        left: `${transform.offsetX + resizeBox.x * transform.scale}px`,
+                        top: `${transform.offsetY + resizeBox.y * transform.scale}px`,
+                        width: `${resizeBox.width * transform.scale}px`,
+                        height: `${resizeBox.height * transform.scale}px`,
+                        outline: `2px dashed rgba(0, 150, 255, 0.8)`,
+                        outlineOffset: '-2px',
+                        pointerEvents: 'none',
+                        boxSizing: 'border-box',
+                    }}
+                >
+                    {Object.entries(getHandles(resizeBox)).map(([name, pos]) => {
+                        const handleSize = 10;
+                        return (
+                            <div
+                                key={name}
+                                style={{
+                                    position: 'absolute',
+                                    left: `${(pos.x - resizeBox.x) * transform.scale - handleSize / 2}px`,
+                                    top: `${(pos.y - resizeBox.y) * transform.scale - handleSize / 2}px`,
+                                    width: `${handleSize}px`,
+                                    height: `${handleSize}px`,
+                                    backgroundColor: 'rgba(0, 150, 255, 1)',
+                                    border: '1px solid white',
+                                    cursor: handleToCursorMap[name],
+                                    pointerEvents: 'auto',
+                                }}
+                            />
+                        );
+                    })}
+                </div>
+            )}
             
             {isLoading && (
                 <div className="absolute inset-0 bg-overlay flex flex-col items-center justify-center z-20">

@@ -9,7 +9,7 @@ import { useImageHistory } from '../hooks/useImageHistory';
 import { useCanvasTransform } from '../hooks/useCanvasTransform';
 
 export type Tool = 'brush' | 'eraser';
-export type EditorMode = 'edit' | 'remove' | 'replace_bg' | 'enhance' | 'style_transfer';
+export type EditorMode = 'edit' | 'remove' | 'replace_bg' | 'enhance' | 'style_transfer' | 'resize' | 'transform';
 
 interface EditorPageProps {
     initialImageDataUrl: string | null;
@@ -45,7 +45,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
     const [isJsonModalOpen, setIsJsonModalOpen] = useState<boolean>(false);
     const [jsonPrompt, setJsonPrompt] = useState<string>('');
     const [isDescribing, setIsDescribing] = useState<boolean>(false);
-    const [lastGenerationParams, setLastGenerationParams] = useState<{ prompt: string; imageB64: string; maskB64: string; bbox: BoundingBox } | null>(null);
+    const [lastGenerationParams, setLastGenerationParams] = useState<{ prompt: string; imageB64: string; } | null>(null);
     const [editorMode, setEditorMode] = useState<EditorMode>('edit');
     const [styleKeywords, setStyleKeywords] = useState<string | null>(null);
     const [styleImage, setStyleImage] = useState<{file: File, dataUrl: string} | null>(null);
@@ -55,8 +55,12 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
     const [isSnapshotsModalOpen, setIsSnapshotsModalOpen] = useState(false);
     const [showFillButton, setShowFillButton] = useState(false);
     
+    // Transform state
+    const [rotation, setRotation] = useState(0);
+    const [skewX, setSkewX] = useState(0);
+    const [skewY, setSkewY] = useState(0);
+
     // Resize state
-    const [isResizing, setIsResizing] = useState(false);
     const [resizeBox, setResizeBox] = useState<BoundingBox | null>(null);
     const [activeHandle, setActiveHandle] = useState<string | null>(null);
     const [hoveredHandle, setHoveredHandle] = useState<string | null>(null);
@@ -97,30 +101,16 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
         const modeConfig = {
             edit: { hasMasking: true }, remove: { hasMasking: true },
             replace_bg: { hasMasking: true }, enhance: { hasMasking: false },
-            style_transfer: { hasMasking: false },
+            style_transfer: { hasMasking: false }, resize: { hasMasking: false },
+            transform: { hasMasking: false },
         };
 
-        if (modeConfig[editorMode]?.hasMasking && !isResizing) {
+        if (modeConfig[editorMode]?.hasMasking && editorMode !== 'resize') {
             ctx.globalAlpha = 0.5;
             ctx.drawImage(maskCanvas, 0, 0);
             ctx.globalAlpha = 1.0;
         }
-
-        if (isResizing && resizeBox) {
-            ctx.strokeStyle = 'rgba(0, 150, 255, 0.8)';
-            ctx.lineWidth = 2 / transform.scale;
-            ctx.setLineDash([6 / transform.scale, 4 / transform.scale]);
-            ctx.strokeRect(resizeBox.x, resizeBox.y, resizeBox.width, resizeBox.height);
-            ctx.setLineDash([]);
-            
-            ctx.fillStyle = 'rgba(0, 150, 255, 0.8)';
-            const handleSize = HANDLE_SIZE_PX / transform.scale;
-            const handles = getHandles(resizeBox);
-            Object.values(handles).forEach(handle => {
-                ctx.fillRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
-            });
-        }
-    }, [originalImage, editorMode, resizeBox, transform.scale, getHandles, isResizing]);
+    }, [originalImage, editorMode]);
 
     const handleClearMask = useCallback(() => {
         const maskCanvas = maskCanvasRef.current;
@@ -139,13 +129,8 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
             const container = containerRef.current;
             if (!canvas || !maskCanvas || !container) return;
             
-            // Get the original image dimensions
             let { width: imgWidth, height: imgHeight } = img;
-            const originalWidth = imgWidth;
-            const originalHeight = imgHeight;
             
-            // Only scale down if the image exceeds MAX_CANVAS_DIMENSION
-            // But preserve aspect ratio and don't make it unnecessarily small
             const maxDim = Math.max(imgWidth, imgHeight);
             let scaleRatio = 1;
             
@@ -155,26 +140,22 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
                 imgHeight = Math.round(imgHeight * scaleRatio);
             }
             
-            // Set canvas dimensions to the scaled image size
             canvas.width = imgWidth;
             canvas.height = imgHeight;
             maskCanvas.width = imgWidth;
             maskCanvas.height = imgHeight;
             
-            // Remove any CSS sizing that might interfere with proper display
             canvas.style.width = '';
             canvas.style.height = '';
             maskCanvas.style.width = '';
             maskCanvas.style.height = '';
             
-            // Create a new image object with the correct src for drawing
             const scaledImg = new Image();
             scaledImg.onload = () => {
                 setOriginalImage(scaledImg);
                 if(callback) callback(scaledImg);
             };
             
-            // If we scaled the image, create a properly sized version
             if (scaleRatio < 1) {
                 const tempCanvas = document.createElement('canvas');
                 tempCanvas.width = imgWidth;
@@ -189,13 +170,12 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
         img.src = dataUrl;
     }, []);
     
-    const { handleUndo, handleRedo, updateHistory, resetHistory, canUndo, canRedo } = useImageHistory(loadImageFromDataUrl, handleClearMask);
+    const { handleUndo, handleRedo, updateHistory, resetHistory, canUndo, canRedo } = useImageHistory(loadImageFromDataUrl, handleClearMask, () => setLastGenerationParams(null));
     
     useEffect(() => {
         if (initialImageDataUrl) {
             loadImageFromDataUrl(initialImageDataUrl, (img) => {
                 resetHistory(initialImageDataUrl);
-                // Use setTimeout to ensure the image and canvas are fully loaded before fitting
                 setTimeout(() => {
                     fitScreenView();
                 }, 100);
@@ -207,7 +187,6 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
 
     useEffect(() => {
         if (originalImage) {
-            // Use setTimeout to ensure the canvas is rendered before fitting
             setTimeout(() => {
                 fitScreenView();
             }, 50);
@@ -218,7 +197,6 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
         const container = containerRef.current;
         if (!container) return;
         const resizeObserver = new ResizeObserver(() => {
-            // Debounce the fitScreenView call
             setTimeout(() => {
                 fitScreenView();
             }, 100);
@@ -229,16 +207,19 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
 
     useEffect(() => {
         if (originalImage) redrawCanvas();
-    }, [originalImage, redrawCanvas, resizeBox, isResizing]);
+    }, [originalImage, redrawCanvas, resizeBox]);
     
     const handleCancelResize = useCallback(() => {
-        setIsResizing(false);
-        setResizeBox(null);
-        setActiveHandle(null);
-        setHoveredHandle(null);
-        setResizeStart(null);
+        setEditorMode('edit');
     }, []);
     
+    const handleCancelTransform = useCallback(() => {
+        setRotation(0);
+        setSkewX(0);
+        setSkewY(0);
+        setEditorMode('edit');
+    }, []);
+
     const handleConfirmResize = useCallback(() => {
         if (!originalImage || !resizeBox) return;
         const wasExpanded = resizeBox.width > originalImage.width || resizeBox.height > originalImage.height;
@@ -246,16 +227,100 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
         tempCanvas.width = Math.round(resizeBox.width);
         tempCanvas.height = Math.round(resizeBox.height);
         const tempCtx = tempCanvas.getContext('2d')!;
+
+        // Fill the new canvas with white before drawing the old image
         tempCtx.fillStyle = 'white';
         tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-        tempCtx.drawImage(originalImage, Math.round(-resizeBox.x), Math.round(-resizeBox.y));
+        
+        // Explicitly provide width/height to drawImage to be robust
+        tempCtx.drawImage(originalImage, Math.round(-resizeBox.x), Math.round(-resizeBox.y), originalImage.width, originalImage.height);
         const newImageSrc = tempCanvas.toDataURL('image/png');
         loadImageFromDataUrl(newImageSrc, () => {
             updateHistory(newImageSrc);
             setShowFillButton(wasExpanded);
-            handleCancelResize();
+            setEditorMode('edit');
         });
-    }, [originalImage, resizeBox, loadImageFromDataUrl, updateHistory, handleCancelResize]);
+    }, [originalImage, resizeBox, loadImageFromDataUrl, updateHistory]);
+    
+    const handleApplyTransform = useCallback(() => {
+        if (!originalImage || (rotation === 0 && skewX === 0 && skewY === 0)) {
+            setEditorMode('edit');
+            return;
+        }
+    
+        const w = originalImage.width;
+        const h = originalImage.height;
+        const rotRad = rotation * Math.PI / 180;
+        const skewXRad = skewX * Math.PI / 180;
+        const skewYRad = skewY * Math.PI / 180;
+    
+        const transformPoint = (px: number, py: number) => {
+            const centeredX = px - w / 2;
+            const centeredY = py - h / 2;
+    
+            const tanSkewX = Math.tan(skewXRad);
+            const tanSkewY = Math.tan(skewYRad);
+            const skewedX = centeredX + centeredY * tanSkewX;
+            const skewedY = centeredX * tanSkewY + centeredY;
+    
+            const cosRot = Math.cos(rotRad);
+            const sinRot = Math.sin(rotRad);
+            const rotatedX = skewedX * cosRot - skewedY * sinRot;
+            const rotatedY = skewedX * sinRot + skewedY * cosRot;
+    
+            return { x: rotatedX, y: rotatedY };
+        };
+    
+        const corners = [
+            transformPoint(0, 0),
+            transformPoint(w, 0),
+            transformPoint(w, h),
+            transformPoint(0, h),
+        ];
+    
+        const minX = Math.min(...corners.map(p => p.x));
+        const maxX = Math.max(...corners.map(p => p.x));
+        const minY = Math.min(...corners.map(p => p.y));
+        const maxY = Math.max(...corners.map(p => p.y));
+    
+        const newWidth = Math.ceil(maxX - minX);
+        const newHeight = Math.ceil(maxY - minY);
+    
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = newWidth;
+        tempCanvas.height = newHeight;
+        const ctx = tempCanvas.getContext('2d')!;
+    
+        ctx.translate(newWidth / 2, newHeight / 2);
+        ctx.rotate(rotRad);
+        ctx.transform(1, Math.tan(skewYRad), Math.tan(skewXRad), 1, 0, 0);
+        ctx.drawImage(originalImage, -w / 2, -h / 2);
+    
+        const newImageSrc = tempCanvas.toDataURL('image/png');
+        loadImageFromDataUrl(newImageSrc, () => {
+            updateHistory(newImageSrc);
+            setRotation(0);
+            setSkewX(0);
+            setSkewY(0);
+            setEditorMode('edit');
+        });
+    
+    }, [originalImage, rotation, skewX, skewY, loadImageFromDataUrl, updateHistory]);
+
+    useEffect(() => {
+        // Setup/Teardown for resize mode
+        if (editorMode === 'resize' && originalImage) {
+            setResizeBox({x: 0, y: 0, width: originalImage.width, height: originalImage.height});
+        } else {
+            // Cleanup if we were in resize mode and now we are not
+            if (resizeBox) {
+                 setResizeBox(null);
+                 setActiveHandle(null);
+                 setHoveredHandle(null);
+                 setResizeStart(null);
+            }
+        }
+    }, [editorMode, originalImage]);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -268,8 +333,13 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
             }
             if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); handleUndo(); }
             if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); handleRedo(); }
-            if (e.key === 'Escape' && isResizing) handleCancelResize();
-            if (e.key === 'Enter' && isResizing) handleConfirmResize();
+            if (e.key === 'Escape') {
+                if(editorMode === 'resize') handleCancelResize();
+                if(editorMode === 'transform') handleCancelTransform();
+            }
+            if (e.key === 'Enter') {
+                if(editorMode === 'resize') handleConfirmResize();
+            }
         };
         const handleKeyUp = (e: KeyboardEvent) => { if (e.key === 'Control') setIsCtrlPressed(false); };
         window.addEventListener('keydown', handleKeyDown);
@@ -278,7 +348,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
             window.removeEventListener('keydown', handleKeyDown);
             window.removeEventListener('keyup', handleKeyUp);
         };
-    }, [handleUndo, handleRedo, isResizing, handleCancelResize, handleConfirmResize]);
+    }, [handleUndo, handleRedo, editorMode, handleCancelResize, handleConfirmResize, handleCancelTransform]);
 
     const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
         if (event.target.files && event.target.files[0]) {
@@ -297,16 +367,6 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
                 });
             };
             reader.readAsDataURL(file);
-        }
-    };
-    
-    const handleToggleResizeMode = () => {
-        if (!originalImage) return;
-        if (isResizing) {
-            handleCancelResize();
-        } else {
-            setIsResizing(true);
-            setResizeBox({x: 0, y: 0, width: originalImage.width, height: originalImage.height});
         }
     };
     
@@ -411,9 +471,9 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
         };
     };
 
-    const getHandleUnderCursor = useCallback((point: { x: number; y: number }): string | null => {
-        if (!resizeBox) return null;
-        const handles = getHandles(resizeBox);
+    const getHandleUnderCursor = useCallback((point: { x: number; y: number }, box: BoundingBox | null): string | null => {
+        if (!box) return null;
+        const handles = getHandles(box);
         const handleSizeOnCanvas = HANDLE_SIZE_PX / transform.scale;
         for (const [name, pos] of Object.entries(handles)) {
             if (
@@ -424,7 +484,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
             }
         }
         return null;
-    }, [resizeBox, transform.scale, getHandles]);
+    }, [transform.scale, getHandles]);
 
     const drawOnMask = useCallback((point: { x: number; y: number }, tool: Tool) => {
         const maskCtx = maskCanvasRef.current?.getContext('2d');
@@ -454,8 +514,8 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
             return;
         }
 
-        if (isResizing && resizeBox) {
-            const handle = getHandleUnderCursor(pos);
+        if (editorMode === 'resize' && resizeBox) {
+            const handle = getHandleUnderCursor(pos, resizeBox);
             if (handle) {
                 setActiveHandle(handle);
                 setResizeStart({ x: pos.x, y: pos.y, box: resizeBox });
@@ -466,7 +526,8 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
         const modeConfig = {
             edit: { hasMasking: true }, remove: { hasMasking: true },
             replace_bg: { hasMasking: true }, enhance: { hasMasking: false },
-            style_transfer: { hasMasking: false },
+            style_transfer: { hasMasking: false }, resize: { hasMasking: false },
+            transform: { hasMasking: false }
         };
         if (!originalImage || !modeConfig[editorMode]?.hasMasking) return;
         
@@ -474,7 +535,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
         lastPointRef.current = pos;
         drawOnMask(pos, currentTool);
         redrawCanvas();
-    }, [originalImage, currentTool, drawOnMask, redrawCanvas, editorMode, startPan, isResizing, resizeBox, getHandleUnderCursor]);
+    }, [originalImage, currentTool, drawOnMask, redrawCanvas, editorMode, startPan, resizeBox, getHandleUnderCursor]);
 
     const handleMouseMove = useCallback((e: React.MouseEvent) => {
         if (activeHandle && resizeStart && resizeBox) {
@@ -498,8 +559,8 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
         }
         
         const pos = getCanvasPointFromEvent(e);
-        if (isResizing) {
-            setHoveredHandle(getHandleUnderCursor(pos));
+        if (editorMode === 'resize') {
+            setHoveredHandle(getHandleUnderCursor(pos, resizeBox));
         }
 
         if (isPanning) {
@@ -520,7 +581,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
         }
         lastPointRef.current = currentPoint;
         redrawCanvas();
-    }, [isPanning, isDrawing, currentTool, drawOnMask, redrawCanvas, pan, activeHandle, resizeStart, isResizing, getHandleUnderCursor]);
+    }, [isPanning, isDrawing, currentTool, drawOnMask, redrawCanvas, pan, activeHandle, resizeStart, resizeBox, editorMode, getHandleUnderCursor]);
 
     const handleMouseUp = useCallback(() => {
         if (activeHandle) {
@@ -557,7 +618,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
             const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
             const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
             pan({ clientX: midX, clientY: midY } as React.MouseEvent);
-        } else if (isDrawing && e.touches.length === 1) { // Drawing
+        } else if ((isDrawing || activeHandle) && e.touches.length === 1) { // Drawing or Resizing
             e.preventDefault();
             const touch = e.touches[0];
             const fakeMouseEvent = {
@@ -567,7 +628,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
             };
             handleMouseMove(fakeMouseEvent as React.MouseEvent);
         }
-    }, [isPanning, isDrawing, pan, handleMouseMove]);
+    }, [isPanning, isDrawing, pan, handleMouseMove, activeHandle]);
 
     const handleTouchEnd = useCallback((e: React.TouchEvent) => {
         // End any ongoing action (pan or draw) when a touch is lifted
@@ -575,55 +636,16 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
         handleMouseUp();
     }, [endPan, handleMouseUp]);
 
-    const getBoundingBox = (): BoundingBox | null => {
-        const maskCanvas = maskCanvasRef.current;
-        if (!maskCanvas) return null;
-        const maskCtx = maskCanvas.getContext('2d');
-        if (!maskCtx) return null;
-        const imageData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
-        const data = imageData.data;
-        let minX = maskCanvas.width, minY = maskCanvas.height, maxX = -1, maxY = -1;
-        for (let y = 0; y < maskCanvas.height; y++) {
-            for (let x = 0; x < maskCanvas.width; x++) {
-                if (data[(y * maskCanvas.width + x) * 4 + 3] > 0) {
-                    minX = Math.min(minX, x); minY = Math.min(minY, y);
-                    maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
-                }
-            }
-        }
-        if (maxX === -1) return null;
-        const PADDING = 30;
-        const x = Math.max(0, minX - PADDING);
-        const y = Math.max(0, minY - PADDING);
-        const width = Math.min(maskCanvas.width, maxX + PADDING) - x;
-        const height = Math.min(maskCanvas.height, maxY + PADDING) - y;
-        return (width > 0 && height > 0) ? { x, y, width, height } : null;
-    };
-    
-    const processAndStitchResult = (resultB64: string, bbox: BoundingBox) => {
-        const resultImg = new Image();
-        resultImg.onload = () => {
-            const mainCanvas = canvasRef.current;
-            const mainCtx = mainCanvas?.getContext('2d');
-            if (mainCanvas && mainCtx && originalImage) {
-                mainCtx.drawImage(originalImage, 0, 0, mainCanvas.width, mainCanvas.height);
-                mainCtx.drawImage(resultImg, bbox.x, bbox.y, bbox.width, bbox.height);
-                const newBaseImageSrc = mainCanvas.toDataURL('image/png');
-                loadImageFromDataUrl(newBaseImageSrc);
-                updateHistory(newBaseImageSrc);
-            }
-        };
-        resultImg.src = `data:image/png;base64,${resultB64}`;
-    };
-
     const handleVary = async () => {
         if (!lastGenerationParams) return;
         setLoadingMessage('Creating a variation...');
         setIsLoading(true);
         setError(null);
         try {
-            const resultB64 = await generateInpaintedImage(lastGenerationParams.prompt, lastGenerationParams.imageB64, lastGenerationParams.maskB64);
-            processAndStitchResult(resultB64, lastGenerationParams.bbox);
+            const resultB64 = await generateImageFromImageAndPrompt(lastGenerationParams.prompt, lastGenerationParams.imageB64);
+            const newBaseImageSrc = `data:image/png;base64,${resultB64}`;
+            loadImageFromDataUrl(newBaseImageSrc);
+            updateHistory(newBaseImageSrc);
         } catch (err) { setError(err instanceof Error ? err.message : 'An unknown error occurred while creating a variation.'); }
         finally { setIsLoading(false); }
     };
@@ -652,6 +674,9 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
                 case 'edit': case 'remove': case 'replace_bg': await handleInpainting(); break;
                 case 'enhance': await handleEnhance(); break;
                 case 'style_transfer': await handleStyleTransfer(); break;
+                case 'resize': // No generate action for resize mode
+                case 'transform': // No generate action for transform mode
+                    break;
                 default: throw new Error("Invalid editor mode selected.");
             }
         } catch (err) { setError(err instanceof Error ? err.message : 'An unknown error occurred.'); }
@@ -660,34 +685,39 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
     
     const handleInpainting = async () => {
         const modeConfig = { edit: { hasPrompt: true }, remove: { hasPrompt: false }, replace_bg: { hasPrompt: true } };
-        if (!originalImage || (modeConfig[editorMode as 'edit' | 'remove' | 'replace_bg'].hasPrompt && !promptText)) {
-            throw new Error('Please upload an image and provide a prompt.');
+        if (!originalImage) {
+            throw new Error('Please upload an image.');
         }
+        if (modeConfig[editorMode as 'edit' | 'remove' | 'replace_bg'].hasPrompt && !promptText) {
+            throw new Error('Please provide a prompt.');
+        }
+
+        if (editorMode === 'remove' && !maskPrompt.trim()) {
+            throw new Error("For 'Remove' mode, please describe what to remove in the text box below the Brush/Eraser buttons (e.g., 'the car').");
+        }
+
         setLoadingMessage('AI is editing your image...');
         let finalPrompt = promptText;
+
         if (editorMode === 'edit' && styleKeywords) {
             finalPrompt = promptText.trim() ? `${promptText.trim()}, ${styleKeywords}` : styleKeywords;
         } else if (editorMode === 'remove') {
-            finalPrompt = "Completely remove the object, person, or element indicated by the mask. Fill the masked area by realistically reconstructing the background that should be behind it.";
+            finalPrompt = `Completely remove the ${maskPrompt} from the image. Fill the area by realistically reconstructing the background that should be behind it.`;
         }
-        const finalBbox = getBoundingBox() ?? { x: 0, y: 0, width: originalImage.width, height: originalImage.height };
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = finalBbox.width; tempCanvas.height = finalBbox.height;
-        tempCanvas.getContext('2d')!.drawImage(originalImage, finalBbox.x, finalBbox.y, finalBbox.width, finalBbox.height, 0, 0, finalBbox.width, finalBbox.height);
-        const imageB64 = tempCanvas.toDataURL('image/png').split(',')[1];
-        const maskBwCanvas = document.createElement('canvas');
-        maskBwCanvas.width = finalBbox.width; maskBwCanvas.height = finalBbox.height;
-        const maskBwCtx = maskBwCanvas.getContext('2d')!;
-        maskBwCtx.drawImage(maskCanvasRef.current!, finalBbox.x, finalBbox.y, finalBbox.width, finalBbox.height, 0, 0, finalBbox.width, finalBbox.height);
-        const maskBwImageData = maskBwCtx.getImageData(0,0, finalBbox.width, finalBbox.height);
-        for (let i = 0; i < maskBwImageData.data.length; i += 4) {
-             maskBwImageData.data[i] = maskBwImageData.data[i+1] = maskBwImageData.data[i+2] = maskBwImageData.data[i + 3] > 0 ? 255 : 0;
+        
+        const imageB64 = originalImage.src.split(',')[1];
+        
+        if (editorMode === 'edit') {
+            setLastGenerationParams({ prompt: finalPrompt, imageB64 });
+        } else {
+            setLastGenerationParams(null);
         }
-        maskBwCtx.putImageData(maskBwImageData, 0, 0);
-        const maskB64 = maskBwCanvas.toDataURL('image/png').split(',')[1];
-        if (editorMode === 'edit') setLastGenerationParams({ prompt: finalPrompt, imageB64, maskB64, bbox: finalBbox });
-        const resultB64 = await generateInpaintedImage(finalPrompt, imageB64, maskB64);
-        processAndStitchResult(resultB64, finalBbox);
+
+        const resultB64 = await generateImageFromImageAndPrompt(finalPrompt, imageB64);
+        
+        const newBaseImageSrc = `data:image/png;base64,${resultB64}`;
+        loadImageFromDataUrl(newBaseImageSrc);
+        updateHistory(newBaseImageSrc);
     };
 
     const handleEnhance = async () => {
@@ -710,25 +740,42 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
         try {
             const imageB64 = originalImage.src.split(',')[1];
             const maskCanvas = document.createElement('canvas');
-            maskCanvas.width = originalImage.width; maskCanvas.height = originalImage.height;
+            maskCanvas.width = originalImage.width;
+            maskCanvas.height = originalImage.height;
             const maskCtx = maskCanvas.getContext('2d')!;
+            
             const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = originalImage.width; tempCanvas.height = originalImage.height;
-            const tempCtx = tempCanvas.getContext('2d')!;
+            tempCanvas.width = originalImage.width;
+            tempCanvas.height = originalImage.height;
+            const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true })!;
             tempCtx.drawImage(originalImage, 0, 0);
             const imageData = tempCtx.getImageData(0, 0, originalImage.width, originalImage.height);
             const data = imageData.data;
-            maskCtx.fillStyle = 'white'; maskCtx.fillRect(0, 0, originalImage.width, originalImage.height);
-            maskCtx.globalCompositeOperation = 'destination-out';
-            for (let y = 0; y < originalImage.height; y++) {
-                for (let x = 0; x < originalImage.width; x++) {
-                    const i = (y * originalImage.width + x) * 4;
-                    if (data[i] < 255 || data[i+1] < 255 || data[i+2] < 255) maskCtx.fillRect(x,y,1,1);
+
+            const maskImageData = maskCtx.createImageData(originalImage.width, originalImage.height);
+            const maskData = maskImageData.data;
+
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                
+                if (r === 255 && g === 255 && b === 255) {
+                    maskData[i] = 255;
+                    maskData[i + 1] = 255;
+                    maskData[i + 2] = 255;
+                    maskData[i + 3] = 255;
+                } else {
+                    maskData[i] = 0;
+                    maskData[i + 1] = 0;
+                    maskData[i + 2] = 0;
+                    maskData[i + 3] = 255;
                 }
             }
-            maskCtx.globalCompositeOperation = 'source-over';
+            maskCtx.putImageData(maskImageData, 0, 0);
+
             const maskB64 = maskCanvas.toDataURL('image/png').split(',')[1];
-            const expandPrompt = "This is an outpainting request. The user has provided an image with transparent areas indicated by the mask. Your task is to seamlessly and realistically fill in these transparent areas, extending the original image in a way that is coherent and contextually appropriate. Maintain the style, lighting, and subject matter of the original image.";
+            const expandPrompt = "Seamlessly complete this image by filling the empty (white) areas. The generated content should be a natural and photorealistic continuation of the existing scene, perfectly matching the original lighting, textures, style, and subject matter. Ensure the final result looks like a single, coherent photograph.";
             const resultB64 = await generateInpaintedImage(expandPrompt, imageB64, maskB64);
             const newImageSrc = `data:image/png;base64,${resultB64}`;
             loadImageFromDataUrl(newImageSrc);
@@ -763,7 +810,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
     const handleRecreateImage = async () => {
         setIsLoading(true); setIsJsonModalOpen(false); setError(null);
         try {
-            const resultB64 = await generateInpaintedImage(jsonPrompt, "", ""); // This is incorrect, should use text to image
+            const resultB64 = await generateImageFromJsonPrompt(jsonPrompt);
             const newImageSrc = `data:image/png;base64,${resultB64}`;
             loadImageFromDataUrl(newImageSrc, () => {
                 resetHistory(newImageSrc);
@@ -808,11 +855,13 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
     const getCursorStyle = () => {
         if (isPanning) return 'grabbing';
         if (isCtrlPressed) return 'grab';
-        if (isResizing) return hoveredHandle ? handleToCursorMap[hoveredHandle] : 'default';
+        if (editorMode === 'resize') return hoveredHandle ? handleToCursorMap[hoveredHandle] : 'default';
+        if (editorMode === 'transform') return 'default';
         const modeConfig = {
             edit: { hasMasking: true }, remove: { hasMasking: true },
             replace_bg: { hasMasking: true }, enhance: { hasMasking: false },
-            style_transfer: { hasMasking: false },
+            style_transfer: { hasMasking: false }, resize: { hasMasking: false },
+            transform: { hasMasking: false }
         };
         if (originalImage && modeConfig[editorMode]?.hasMasking) {
             return currentTool === 'brush' ? 'crosshair' : 'cell';
@@ -866,10 +915,16 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
                         canVary={!!lastGenerationParams}
                         onSaveSnapshot={handleSaveSnapshot}
                         onViewSnapshots={() => setIsSnapshotsModalOpen(true)}
-                        onToggleResize={handleToggleResizeMode}
-                        isResizing={isResizing}
                         onConfirmResize={handleConfirmResize}
                         onCancelResize={handleCancelResize}
+                        rotation={rotation}
+                        onRotationChange={setRotation}
+                        skewX={skewX}
+                        onSkewXChange={setSkewX}
+                        skewY={skewY}
+                        onSkewYChange={setSkewY}
+                        onApplyTransform={handleApplyTransform}
+                        onCancelTransform={handleCancelTransform}
                     />
                 </div>
                 <div className="lg:col-span-3 xl:col-span-4 flex flex-col">
@@ -895,6 +950,11 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
                         onFitScreen={fitScreenView}
                         onFillScreen={fillScreenView}
                         onZoomToPercentage={zoomToPercentage}
+                        editorMode={editorMode}
+                        resizeBox={resizeBox}
+                        rotation={rotation}
+                        skewX={skewX}
+                        skewY={skewY}
                     />
                 </div>
                 <JsonModal
