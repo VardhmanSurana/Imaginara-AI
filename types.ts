@@ -5,3 +5,8 @@ export interface BoundingBox {
   width: number;
   height: number;
 }
+
+export interface Suggestion {
+  heading: string;
+  prompt: string;
+}

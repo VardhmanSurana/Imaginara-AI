@@ -23,6 +23,11 @@ export const EraserIcon: React.FC<IconProps> = ({ className = "h-5 w-5" }) => (
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.375V12" />
     </svg>
 );
+export const AspectRatioIcon: React.FC<IconProps> = ({ className = "h-5 w-5" }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 3.75H4.5v3M16.5 20.25H19.5v-3M3.75 16.5v3H7.5m9-16.5h3v3" />
+    </svg>
+);
 
 export const LightBulbIcon: React.FC<IconProps> = ({ className = "h-5 w-5" }) => (
     <svg xmlns="http://www.w3.org/2000/svg" className={`${className} text-accent`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

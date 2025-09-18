@@ -2,8 +2,10 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ZoomInIcon, ZoomOutIcon, FitScreenIcon, FillScreenIcon } from './Icon';
 import Spinner from './Spinner';
 import { BoundingBox } from '../types';
+import AspectRatioDock from './AspectRatioDock';
 
-type EditorMode = 'edit' | 'remove' | 'replace_bg' | 'enhance' | 'style_transfer' | 'resize' | 'transform';
+type EditorMode = 'edit' | 'remove' | 'replace_bg' | 'enhance' | 'style_transfer' | 'resize' | 'transform' | 'change_ratio';
+type Tool = 'brush' | 'eraser';
 
 interface ViewControlsProps {
     onZoomIn: () => void;
@@ -107,9 +109,18 @@ interface CanvasViewProps {
     onZoomToPercentage: (percentage: number) => void;
     editorMode: EditorMode;
     resizeBox: BoundingBox | null;
+    aspectRatioBox: BoundingBox | null;
     rotation: number;
     skewX: number;
     skewY: number;
+    brushSize: number;
+    currentTool: Tool;
+    // Aspect Ratio Dock props
+    onSelectAspectRatio: (ratio: { name: string, width: number, height: number } | null) => void;
+    selectedAspectRatio: string | null;
+    onApplyAspectRatioCanvas: () => void;
+    onCancelAspectRatio: () => void;
+    onFreeSize: () => void;
 }
 
 const CanvasView: React.FC<CanvasViewProps> = (props) => {
@@ -119,19 +130,44 @@ const CanvasView: React.FC<CanvasViewProps> = (props) => {
         onMouseDown, onMouseMove, onMouseUp, onMouseLeave, onWheel,
         onTouchStart, onTouchMove, onTouchEnd,
         onZoomIn, onZoomOut, onFitScreen, onFillScreen, onZoomToPercentage,
-        editorMode, resizeBox, rotation, skewX, skewY
+        editorMode, resizeBox, aspectRatioBox, rotation, skewX, skewY,
+        brushSize, currentTool,
+        onSelectAspectRatio, selectedAspectRatio,
+        onApplyAspectRatioCanvas, onCancelAspectRatio, onFreeSize
     } = props;
 
+    const [brushPreview, setBrushPreview] = useState<{ x: number, y: number, visible: boolean } | null>(null);
+
     const showPlaceholder = !originalImage;
+    const isMaskingMode = ['edit', 'remove', 'replace_bg'].includes(editorMode);
+
+    const handleLocalMouseMove = (e: React.MouseEvent) => {
+        if (isMaskingMode) {
+            const rect = containerRef.current!.getBoundingClientRect();
+            setBrushPreview({
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top,
+                visible: true,
+            });
+        }
+        onMouseMove(e);
+    };
+    
+    const handleLocalMouseLeave = (e: React.MouseEvent) => {
+        if (isMaskingMode) {
+            setBrushPreview(prev => prev ? { ...prev, visible: false } : { x: 0, y: 0, visible: false });
+        }
+        onMouseLeave(e);
+    };
 
     return (
         <div 
             ref={containerRef}
-            className={`bg-surface-muted rounded-lg shadow-lg aspect-square relative ${editorMode === 'resize' ? '' : 'overflow-hidden'}`}
+            className={`bg-surface-muted rounded-lg shadow-lg relative ${editorMode === 'resize' ? '' : 'overflow-hidden'} w-full h-full`}
             onMouseDown={onMouseDown} 
-            onMouseMove={onMouseMove} 
+            onMouseMove={handleLocalMouseMove} 
             onMouseUp={onMouseUp} 
-            onMouseLeave={onMouseLeave} 
+            onMouseLeave={handleLocalMouseLeave} 
             onWheel={onWheel}
             onTouchStart={onTouchStart}
             onTouchMove={onTouchMove}
@@ -148,6 +184,7 @@ const CanvasView: React.FC<CanvasViewProps> = (props) => {
             <canvas 
                 ref={canvasRef}
                 style={{ 
+                    position: 'absolute',
                     display: originalImage ? 'block' : 'none', 
                     transform: `translate(${transform.offsetX}px, ${transform.offsetY}px) scale(${transform.scale}) rotate(${rotation}deg) skew(${skewX}deg, ${skewY}deg)`, 
                     transformOrigin: 'top left', 
@@ -156,6 +193,57 @@ const CanvasView: React.FC<CanvasViewProps> = (props) => {
                 }}
             />
             <canvas ref={maskCanvasRef} className="hidden" />
+
+            {brushPreview?.visible && isMaskingMode && (
+                <div
+                    className="absolute pointer-events-none rounded-full"
+                    style={{
+                        left: brushPreview.x,
+                        top: brushPreview.y,
+                        width: `${brushSize * transform.scale}px`,
+                        height: `${brushSize * transform.scale}px`,
+                        transform: 'translate(-50%, -50%)',
+                        backgroundColor: currentTool === 'brush' ? 'rgba(139, 92, 246, 0.4)' : 'rgba(255, 255, 255, 0.4)',
+                        border: '1px solid rgba(255, 255, 255, 0.8)',
+                    }}
+                />
+            )}
+
+            {editorMode === 'change_ratio' && aspectRatioBox && (
+                 <div
+                    style={{
+                        position: 'absolute',
+                        left: `${transform.offsetX + aspectRatioBox.x * transform.scale}px`,
+                        top: `${transform.offsetY + aspectRatioBox.y * transform.scale}px`,
+                        width: `${aspectRatioBox.width * transform.scale}px`,
+                        height: `${aspectRatioBox.height * transform.scale}px`,
+                        boxShadow: '0 0 0 9999px rgba(0,0,0,0.6)',
+                        outline: '2px dashed rgba(255, 255, 255, 0.7)',
+                        cursor: cursorStyle,
+                        pointerEvents: 'none', // Box itself doesn't capture events
+                    }}
+                 >
+                    {Object.entries(getHandles(aspectRatioBox)).map(([name, pos]) => {
+                        const handleSize = 10;
+                        return (
+                            <div
+                                key={name}
+                                style={{
+                                    position: 'absolute',
+                                    left: `${(pos.x - aspectRatioBox.x) * transform.scale - handleSize / 2}px`,
+                                    top: `${(pos.y - aspectRatioBox.y) * transform.scale - handleSize / 2}px`,
+                                    width: `${handleSize}px`,
+                                    height: `${handleSize}px`,
+                                    backgroundColor: 'rgba(255, 255, 255, 1)',
+                                    border: '1px solid rgba(0, 0, 0, 0.5)',
+                                    cursor: handleToCursorMap[name],
+                                    pointerEvents: 'auto',
+                                }}
+                            />
+                        );
+                    })}
+                 </div>
+            )}
 
             {editorMode === 'resize' && resizeBox && (
                 <div
@@ -179,7 +267,7 @@ const CanvasView: React.FC<CanvasViewProps> = (props) => {
                                 style={{
                                     position: 'absolute',
                                     left: `${(pos.x - resizeBox.x) * transform.scale - handleSize / 2}px`,
-                                    top: `${(pos.y - resizeBox.y) * transform.scale - handleSize / 2}px`,
+                                    top: `${(pos.y - aspectRatioBox.y) * transform.scale - handleSize / 2}px`,
                                     width: `${handleSize}px`,
                                     height: `${handleSize}px`,
                                     backgroundColor: 'rgba(0, 150, 255, 1)',
@@ -208,6 +296,16 @@ const CanvasView: React.FC<CanvasViewProps> = (props) => {
                     onFillScreen={onFillScreen}
                     onZoomToPercentage={onZoomToPercentage}
                     zoomLevel={transform.scale}
+                />
+            )}
+
+            {editorMode === 'change_ratio' && originalImage && (
+                <AspectRatioDock
+                    onSelectAspectRatio={onSelectAspectRatio}
+                    selectedAspectRatio={selectedAspectRatio}
+                    onApply={onApplyAspectRatioCanvas}
+                    onCancel={onCancelAspectRatio}
+                    onFreeSize={onFreeSize}
                 />
             )}
         </div>

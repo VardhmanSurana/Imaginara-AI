@@ -1,4 +1,15 @@
 import { GoogleGenAI, Modality, Type } from "@google/genai";
+import { 
+    INPAINTING_PROMPT,
+    SUGGESTIONS_PROMPT,
+    IMPROVE_PROMPT_SYSTEM_INSTRUCTION,
+    DESCRIBE_IMAGE_SYSTEM_INSTRUCTION,
+    GENERATE_FROM_JSON_PROMPT,
+    MASK_GENERATION_PROMPT,
+    STYLE_TRANSFER_PROMPT
+} from '../prompts';
+import { Suggestion } from '../types';
+
 
 // ❗️ DANGER ZONE: SECURITY WARNING ❗️
 // Do NOT expose your API key in client-side code.
@@ -19,7 +30,7 @@ export const generateInpaintedImage = async (
     maskB64: string
 ): Promise<string> => {
     try {
-        const fullPrompt = `Use the provided mask to edit the image with the following instruction: "${prompt}"`;
+        const fullPrompt = INPAINTING_PROMPT(prompt);
         
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image-preview',
@@ -81,14 +92,14 @@ export const generateImageFromImageAndPrompt = async (
     }
 };
 
-export const analyzeImageForSuggestions = async (imageB64: string): Promise<string[]> => {
+export const analyzeImageForSuggestions = async (imageB64: string): Promise<Suggestion[]> => {
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: {
                 parts: [
                     { inlineData: { data: imageB64, mimeType: 'image/jpeg' } },
-                    { text: 'Analyze this image and provide 3 creative and interesting editing suggestions. The suggestions should be short and concise, suitable for a user prompt. Respond with only a valid JSON array of strings. For example: ["Make the sky a vibrant sunset", "Add a curious cat on the windowsill", "Turn the building into a futuristic skyscraper"]' }
+                    { text: SUGGESTIONS_PROMPT }
                 ]
             },
             config: {
@@ -96,16 +107,21 @@ export const analyzeImageForSuggestions = async (imageB64: string): Promise<stri
                 responseSchema: {
                     type: Type.ARRAY,
                     items: {
-                        type: Type.STRING
+                        type: Type.OBJECT,
+                        properties: {
+                            heading: { type: Type.STRING },
+                            prompt: { type: Type.STRING }
+                        },
+                        required: ['heading', 'prompt']
                     }
                 }
             }
         });
 
         const jsonString = response.text.trim();
-        const suggestions = JSON.parse(jsonString);
+        const suggestions: Suggestion[] = JSON.parse(jsonString);
 
-        if (Array.isArray(suggestions) && suggestions.every(s => typeof s === 'string')) {
+        if (Array.isArray(suggestions) && suggestions.every(s => typeof s.heading === 'string' && typeof s.prompt === 'string')) {
             return suggestions;
         } else {
             console.warn("API returned an unexpected format for suggestions.");
@@ -119,13 +135,11 @@ export const analyzeImageForSuggestions = async (imageB64: string): Promise<stri
 
 export const improvePrompt = async (currentPrompt: string): Promise<string> => {
     try {
-        const systemInstruction = 'You are a prompt enhancement assistant. You will receive a simple user prompt for an AI image generator. Your task is to rewrite it into a more descriptive, detailed, and vivid prompt that will produce a higher quality, more interesting image. Focus on adding details about the subject, environment, lighting, and artistic style. Respond with ONLY the improved prompt text, without any introductory phrases, explanations, or quotation marks.';
-        
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: currentPrompt,
             config: {
-                systemInstruction,
+                systemInstruction: IMPROVE_PROMPT_SYSTEM_INSTRUCTION,
             },
         });
         
@@ -136,8 +150,6 @@ export const improvePrompt = async (currentPrompt: string): Promise<string> => {
     }
 };
 
-const describeImageSystemInstruction = `Act as an expert image analysis API. Your task is to analyze the user-provided image and generate a single, comprehensive JSON object that describes it in minute detail. The JSON should be organized into logical sections to describe composition, visual style, technical details, and narrative elements. Adhere strictly to the provided JSON schema.`;
-
 const imageDescriptionSchema = {
     type: Type.OBJECT, properties: { general_description: { type: Type.STRING }, composition: { type: Type.OBJECT, properties: { subjects: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, description: { type: Type.STRING }, keywords: { type: Type.ARRAY, items: { type: Type.STRING } }, }, required: ["name", "description", "keywords"] } }, scene: { type: Type.OBJECT, properties: { setting: { type: Type.STRING }, time_of_day: { type: Type.STRING }, weather_or_atmosphere: { type: Type.STRING }, }, required: ["setting", "time_of_day", "weather_or_atmosphere"] } }, required: ["subjects", "scene"] }, visual_style: { type: Type.OBJECT, properties: { art_style: { type: Type.STRING }, lighting: { type: Type.STRING }, color_palette: { type: Type.STRING }, mood_or_emotion: { type: Type.STRING }, }, required: ["art_style", "lighting", "color_palette", "mood_or_emotion"] }, technical_details: { type: Type.OBJECT, properties: { camera_angle: { type: Type.STRING }, focus: { type: Type.STRING }, textures_and_details: { type: Type.ARRAY, items: { type: Type.STRING } }, }, required: ["camera_angle", "focus", "textures_and_details"] }, narrative_elements: { type: Type.OBJECT, properties: { story: { type: Type.STRING }, symbolism: { type: Type.STRING }, }, required: ["story", "symbolism"] } }, required: ["general_description", "composition", "visual_style", "technical_details", "narrative_elements"]
 };
@@ -147,7 +159,7 @@ export const describeImage = async (imageB64: string): Promise<string> => {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: { parts: [ { inlineData: { data: imageB64, mimeType: 'image/png' } }, ] },
-            config: { systemInstruction: describeImageSystemInstruction, responseMimeType: 'application/json', responseSchema: imageDescriptionSchema as any, }
+            config: { systemInstruction: DESCRIBE_IMAGE_SYSTEM_INSTRUCTION, responseMimeType: 'application/json', responseSchema: imageDescriptionSchema as any, }
         });
         return response.text;
     } catch (error) {
@@ -158,7 +170,7 @@ export const describeImage = async (imageB64: string): Promise<string> => {
 
 export const generateImageFromJsonPrompt = async (prompt: string): Promise<string> => {
     try {
-        const fullPrompt = `Generate an image based on the following detailed JSON description. Focus on capturing the composition, style, and mood described.\n\n${prompt}`;
+        const fullPrompt = GENERATE_FROM_JSON_PROMPT(prompt);
         return generateImageFromText(fullPrompt);
     } catch (error) {
         console.error("Error generating image from JSON:", error);
@@ -168,7 +180,7 @@ export const generateImageFromJsonPrompt = async (prompt: string): Promise<strin
 
 export const generateMask = async (imageB64: string, subject_prompt: string): Promise<string> => {
     try {
-        const fullPrompt = `Generate a black and white mask image. The area described as "${subject_prompt}" should be white, and everything else should be black. Do not add any other elements, text, or anti-aliasing. The mask must be pure black and white.`
+        const fullPrompt = MASK_GENERATION_PROMPT(subject_prompt);
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image-preview',
@@ -214,14 +226,13 @@ export const generateImageFromText = async (prompt: string): Promise<string> => 
 
 export const applyStyleTransfer = async (contentImageB64: string, styleImageB64: string): Promise<string> => {
     try {
-        const prompt = "Transfer the artistic style from the second image (style image) onto the content and composition of the first image (content image).";
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image-preview',
             contents: {
                 parts: [
                     { inlineData: { data: contentImageB64, mimeType: 'image/png' } },
                     { inlineData: { data: styleImageB64, mimeType: 'image/png' } },
-                    { text: prompt },
+                    { text: STYLE_TRANSFER_PROMPT },
                 ],
             },
             config: {
