@@ -1,11 +1,10 @@
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ZoomInIcon, ZoomOutIcon, FitScreenIcon, FillScreenIcon } from './Icon';
 import Spinner from './Spinner';
 import { BoundingBox } from '../types';
 import AspectRatioDock from './AspectRatioDock';
-
-type EditorMode = 'edit' | 'remove' | 'replace_bg' | 'enhance' | 'style_transfer' | 'resize' | 'transform' | 'change_ratio';
-type Tool = 'brush' | 'eraser';
+import { EditorMode, Tool } from '../types/editor';
 
 interface ViewControlsProps {
     onZoomIn: () => void;
@@ -267,7 +266,7 @@ const CanvasView: React.FC<CanvasViewProps> = (props) => {
                                 style={{
                                     position: 'absolute',
                                     left: `${(pos.x - resizeBox.x) * transform.scale - handleSize / 2}px`,
-                                    top: `${(pos.y - aspectRatioBox.y) * transform.scale - handleSize / 2}px`,
+                                    top: `${(pos.y - resizeBox.y) * transform.scale - handleSize / 2}px`,
                                     width: `${handleSize}px`,
                                     height: `${handleSize}px`,
                                     backgroundColor: 'rgba(0, 150, 255, 1)',

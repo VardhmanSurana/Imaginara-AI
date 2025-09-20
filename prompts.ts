@@ -1,5 +1,7 @@
 // PROMPTS FOR services/geminiService.ts
 
+export const IMAGE_EDITING_SYSTEM_INSTRUCTION = "You are an AI image editing service. Your task is to follow the user's instructions to modify the provided image. Your only output should be the resulting image. Do not return text, conversational responses, or questions. Directly output the edited image.";
+
 export const INPAINTING_PROMPT = (prompt: string) => 
     `Use the provided mask to edit the image with the following instruction: "${prompt}"`;
 

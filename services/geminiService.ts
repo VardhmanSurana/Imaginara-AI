@@ -6,7 +6,8 @@ import {
     DESCRIBE_IMAGE_SYSTEM_INSTRUCTION,
     GENERATE_FROM_JSON_PROMPT,
     MASK_GENERATION_PROMPT,
-    STYLE_TRANSFER_PROMPT
+    STYLE_TRANSFER_PROMPT,
+    IMAGE_EDITING_SYSTEM_INSTRUCTION
 } from '../prompts';
 import { Suggestion } from '../types';
 
@@ -42,7 +43,8 @@ export const generateInpaintedImage = async (
                 ],
             },
             config: {
-                responseModalities: [Modality.IMAGE, Modality.TEXT],
+                responseModalities: [Modality.IMAGE],
+                systemInstruction: IMAGE_EDITING_SYSTEM_INSTRUCTION,
             },
         });
 
@@ -74,7 +76,8 @@ export const generateImageFromImageAndPrompt = async (
                 ],
             },
             config: {
-                responseModalities: [Modality.IMAGE, Modality.TEXT],
+                responseModalities: [Modality.IMAGE],
+                systemInstruction: IMAGE_EDITING_SYSTEM_INSTRUCTION,
             },
         });
 
@@ -236,7 +239,8 @@ export const applyStyleTransfer = async (contentImageB64: string, styleImageB64:
                 ],
             },
             config: {
-                responseModalities: [Modality.IMAGE, Modality.TEXT],
+                responseModalities: [Modality.IMAGE],
+                systemInstruction: IMAGE_EDITING_SYSTEM_INSTRUCTION,
             },
         });
 

@@ -1,8 +1,9 @@
+
 import React from 'react';
 import { SparklesIcon, LightBulbIcon, CodeIcon, DownloadIcon, RedoIcon, UndoIcon, VaryIcon, SaveSnapshotIcon, ViewSnapshotsIcon } from './Icon';
 import Spinner from './Spinner';
 import StylePresets from './StylePresets';
-import { EditorMode } from './EditorPage';
+import { EditorMode } from '../types/editor';
 import { modeConfig } from './ControlsPanel';
 import { Suggestion } from '../types';
 

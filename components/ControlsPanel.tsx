@@ -1,8 +1,10 @@
+
 import React from 'react';
-import { UploadIcon, SparklesIcon, EraserIcon, WandIcon, HomeIcon, BrushIcon, EnhanceIcon, RemoveObjectIcon, ReplaceBackgroundIcon, StyleTransferIcon, ResizeIcon, TransformIcon, AspectRatioIcon } from './Icon';
+import { UploadIcon, SparklesIcon, EraserIcon, WandIcon, HomeIcon, BrushIcon, EnhanceIcon, RemoveObjectIcon, ReplaceBackgroundIcon, StyleTransferIcon, ResizeIcon, TransformIcon, AspectRatioIcon, AdjustmentsIcon } from './Icon';
 import Spinner from './Spinner';
-import { EditorMode, Tool } from './EditorPage';
+import { EditorMode, Tool, AdjustmentsState } from '../types/editor';
 import AiFilters from './AiFilters';
+import Adjustments from './Adjustments';
 
 export const modeConfig: Record<EditorMode, { name: string; icon: React.FC<any>; hasPrompt: boolean; hasMasking: boolean; }> = {
     edit: { name: "Edit", icon: BrushIcon, hasPrompt: true, hasMasking: true },
@@ -10,6 +12,7 @@ export const modeConfig: Record<EditorMode, { name: string; icon: React.FC<any>;
     replace_bg: { name: "Replace BG", icon: ReplaceBackgroundIcon, hasPrompt: true, hasMasking: true },
     enhance: { name: "Enhance", icon: EnhanceIcon, hasPrompt: false, hasMasking: false },
     style_transfer: { name: "Style Transfer", icon: StyleTransferIcon, hasPrompt: false, hasMasking: false },
+    adjustments: { name: "Adjust", icon: AdjustmentsIcon, hasPrompt: false, hasMasking: false },
     resize: { name: "Resize", icon: ResizeIcon, hasPrompt: false, hasMasking: false },
     change_ratio: { name: "Change Ratio", icon: AspectRatioIcon, hasPrompt: false, hasMasking: false },
     transform: { name: "Transform", icon: TransformIcon, hasPrompt: false, hasMasking: false },
@@ -22,7 +25,7 @@ const toolGroups = [
     },
     {
         title: 'Adjustments',
-        tools: ['enhance', 'style_transfer']
+        tools: ['enhance', 'style_transfer', 'adjustments']
     },
     {
         title: 'Transform',
@@ -58,6 +61,12 @@ interface ControlsPanelProps {
     onSkewYChange: (value: number) => void;
     onApplyTransform: () => void;
     onCancelTransform: () => void;
+    // Adjustment props
+    adjustments: AdjustmentsState;
+    onAdjustmentChange: (key: keyof AdjustmentsState, value: any) => void;
+    onColorBalanceChange: (tone: 'shadows' | 'midtones' | 'highlights', channel: 'r' | 'g' | 'b', value: number) => void;
+    onApplyAdjustments: () => void;
+    onResetAdjustments: () => void;
 }
 
 const BrushSizeSlider: React.FC<{
@@ -89,14 +98,15 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
         isLoading, editorMode, setEditorMode, currentTool, setCurrentTool,
         maskPrompt, onMaskPromptChange, onMaskByText, isMaskingByText, onApplyFilter,
         onConfirmResize, onCancelResize,
-        rotation, onRotationChange, skewX, onSkewXChange, skewY, onSkewYChange, onApplyTransform, onCancelTransform
+        rotation, onRotationChange, skewX, onSkewXChange, skewY, onSkewYChange, onApplyTransform, onCancelTransform,
+        adjustments, onAdjustmentChange, onColorBalanceChange, onApplyAdjustments, onResetAdjustments
     } = props;
 
     const currentModeConfig = modeConfig[editorMode];
     const isTransforming = editorMode === 'resize' || editorMode === 'transform' || editorMode === 'change_ratio';
 
     return (
-        <div className="bg-surface rounded-lg shadow-lg flex flex-col">
+        <div className="bg-surface rounded-lg shadow-lg flex flex-col h-full">
              {/* HEADER */}
              <div className="p-4 border-b border-border-base flex-shrink-0">
                 <div className="flex items-center gap-2">
@@ -110,7 +120,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
             </div>
 
             {/* MAIN CONTENT */}
-            <div className="p-4 space-y-4">
+            <div className="p-4 space-y-4 overflow-y-auto flex-1">
                  {/* TOOLS SECTION */}
                 <div className="space-y-3">
                      {toolGroups.map(group => (
@@ -178,6 +188,16 @@ const ControlsPanel: React.FC<ControlsPanelProps> = (props) => {
                     )}
                     <AiFilters onApplyFilter={onApplyFilter} />
                 </div>
+                 
+                 {editorMode === 'adjustments' && (
+                     <Adjustments 
+                        adjustments={adjustments}
+                        onAdjustmentChange={onAdjustmentChange}
+                        onColorBalanceChange={onColorBalanceChange}
+                        onApply={onApplyAdjustments}
+                        onReset={onResetAdjustments}
+                     />
+                 )}
 
                 {/* TRANSFORM/RESIZE UI */}
                 {editorMode === 'resize' && (
