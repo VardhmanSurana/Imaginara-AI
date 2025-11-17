@@ -3,8 +3,6 @@
 
 Imaginara is a web-based application that leverages the power of AI to create and edit images. Whether you want to generate a new image from a text prompt or upload your own to start editing, Imaginara provides a suite of powerful AI tools to bring your creative vision to life.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1MMWBM71iefOEJFArvtCWmBGpIYosLkIp
-
 ## About The Project
 
 This project was built to showcase the capabilities of the Gemini API for advanced image manipulation and generation. It provides a user-friendly interface for tasks like inpainting, style transfer, and AI-driven image analysis.
@@ -38,7 +36,7 @@ To get a local copy up and running follow these simple steps.
 
 1. Clone the repo
    ```sh
-   git clone https://github.com/your_username_/Imaginara.git
+   git clone https://github.com/VardhmanSurana/Imaginara.git
    ```
 2. Install NPM packages
    ```sh
