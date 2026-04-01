@@ -345,10 +345,18 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
             transformPoint(0, h),
         ];
 
-        const minX = Math.min(...corners.map(p => p.x));
-        const maxX = Math.max(...corners.map(p => p.x));
-        const minY = Math.min(...corners.map(p => p.y));
-        const maxY = Math.max(...corners.map(p => p.y));
+        let minX = corners[0].x;
+        let maxX = corners[0].x;
+        let minY = corners[0].y;
+        let maxY = corners[0].y;
+
+        for (let i = 1; i < corners.length; i++) {
+            const p = corners[i];
+            if (p.x < minX) minX = p.x;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.y > maxY) maxY = p.y;
+        }
         const newWidth = Math.ceil(maxX - minX);
         const newHeight = Math.ceil(maxY - minY);
 
