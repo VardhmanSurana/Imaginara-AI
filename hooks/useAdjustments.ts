@@ -17,7 +17,7 @@ export const useAdjustments = (
     const applyColorBalance = useCallback((ctx: CanvasRenderingContext2D) => {
         const { colorBalance } = adjustments;
         const isAdjusted = Object.values(colorBalance).some(
-            val => val.r !== 0 || val.g !== 0 || val.b !== 0
+            (val: any) => val.r !== 0 || val.g !== 0 || val.b !== 0
         );
         if (!isAdjusted) return;
         

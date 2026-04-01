@@ -611,9 +611,10 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialImageDataUrl, onGoHome }
 
     const getHandleUnderCursor = useCallback((point: { x: number; y: number }, box: BoundingBox | null): string | null => {
         if (!box) return null;
-        const handles = getHandles(box);
+        const handles = getHandles(box) as Record<string, {x: number; y: number}>;
         const handleSizeOnCanvas = HANDLE_SIZE_PX / transform.scale;
-        for (const [name, pos] of Object.entries(handles)) {
+        for (const name in handles) {
+            const pos = handles[name];
             if (
                 point.x >= pos.x - handleSizeOnCanvas / 2 && point.x <= pos.x + handleSizeOnCanvas / 2 &&
                 point.y >= pos.y - handleSizeOnCanvas / 2 && point.y <= pos.y + handleSizeOnCanvas / 2
